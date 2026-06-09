@@ -1,10 +1,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
- 
-# Les routers seront créés semaine 1-2
-# from backend.routers import import_router, scan_router, rapport_router
- 
+from backend.routers import import_router, scan_router, rapport_router
+
 app = FastAPI(title="Coach IA", version="0.1.0")
  
 # CORS — autorise le frontend local (port 5500 si Live Server, ou même origine)
@@ -15,6 +13,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
  
+app.include_router(import_router.router, prefix="/import", tags=["Import"])
+app.include_router(scan_router.router, prefix="/scan", tags=["Scan"])
+app.include_router(rapport_router.router, prefix="/rapport", tags=["Rapport"])
+
 # Fichiers statiques (HTML/CSS/JS du frontend)
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
  
