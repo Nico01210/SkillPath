@@ -1,5 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ScanResponse, Erreur, CoursLie
+from backend.services import llm_service
+
  
 router = APIRouter()
  
@@ -22,23 +24,24 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
             detail=f"Extension non supportée. Acceptées : {EXTENSIONS_ACCEPTEES}"
         )
 
-    # Données fictives pour tester que l'endpoint répond
-    erreurs_mock = [
-        Erreur(
-            niveau="critique",
-            titre="Fonction trop longue",
-            fichier=fichier.filename,
-            ligne=42,
-            description="La fonction dépasse 20 lignes. Règle : une fonction = une responsabilité.",
-            extrait="def process_data(df):\n    # trop de logique ici...",
-            cours=[
-                CoursLie(titre="Chapitre 3 — Fonctions et SRP", chunk_id="mock-001")
-            ]
-        )
-    ]
+    try:
+        # Lit le contenu du fichier en texte
+        contenu_bytes = await fichier.read()
+        contenu = contenu_bytes.decode("utf-8")
  
-    return ScanResponse(
-        fichier=fichier.filename,
-        erreurs=erreurs_mock,
-        message=f"[MOCK] 1 erreur fictive — service LLM pas encore branché"
-    )
+        # Analyse via LLM (mock ou OpenAI) + enrichissement RAG
+        erreurs = llm_service.analyser_code(contenu, fichier.filename)
+ 
+        nb = len(erreurs)
+        return ScanResponse(
+            fichier=fichier.filename,
+            erreurs=erreurs,
+            message=f"{nb} erreur{'s' if nb > 1 else ''} détectée{'s' if nb > 1 else ''}"
+        )
+ 
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="Le fichier doit être en UTF-8")
+ 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'analyse : {str(e)}")
+ 
