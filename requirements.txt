@@ -1,0 +1,21 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+ 
+# IA
+openai==1.30.0
+ 
+# RAG / base vectorielle
+chromadb==0.5.0
+ 
+# Lecture PDF
+pymupdf==1.24.5
+ 
+# Base de données
+# sqlite3 est inclus dans Python — pas besoin de l'installer
+ 
+# Utilitaires
+python-dotenv==1.0.1
+pydantic==2.7.1
+ 
