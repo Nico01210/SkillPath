@@ -5,7 +5,7 @@ load_dotenv()
  
  
 class Settings(BaseSettings):
-    openai_api_key: str
+    openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     chroma_db_path: str = "./data/chromadb"
     sqlite_db_path: str = "./data/coach.db"

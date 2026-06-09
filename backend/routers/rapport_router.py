@@ -1,62 +1,37 @@
-from fastapi import APIRouter
-from datetime import date
-from backend.models.schemas import RapportResponse, StatsRapport, Erreur, CoursLie
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from backend.models.schemas import ImportResponse
+from backend.services import pdf_services as pdf_service, chroma_service
  
 router = APIRouter()
  
  
-@router.get("/", response_model=RapportResponse)
-async def generer_rapport():
+@router.post("/", response_model=ImportResponse)
+async def importer_pdf(fichier: UploadFile = File(...)):
     """
-    Agrège toutes les analyses SQLite du jour et retourne le rapport complet.
-    Le frontend utilise ces données pour afficher et exporter le HTML.
+    Reçoit un fichier PDF, le découpe en chunks et les stocke dans ChromaDB.
     """
+    if not fichier.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Le fichier doit être un PDF")
  
-    # Données fictives pour tester que l'endpoint répond
-    erreurs_mock = [
-        Erreur(
-            niveau="critique",
-            titre="Fonction trop longue",
-            fichier="main.py",
-            ligne=42,
-            description="La fonction dépasse 20 lignes.",
-            extrait="def process_data(df):\n    ...",
-            cours=[
-                CoursLie(titre="Chapitre 3 — Fonctions et SRP", chunk_id="mock-001"),
-                CoursLie(titre="Chapitre 5 — Clean Code", chunk_id="mock-002"),
-            ]
-        ),
-        Erreur(
-            niveau="avertissement",
-            titre="Pas de gestion d'erreur",
-            fichier="api.py",
-            ligne=55,
-            description="Appel réseau sans try/except.",
-            extrait="response = requests.get(url)",
-            cours=[
-                CoursLie(titre="Chapitre 7 — Exceptions", chunk_id="mock-003")
-            ]
+    try:
+        # 1. Lit le contenu brut du fichier uploadé
+        contenu = await fichier.read()
+ 
+        # 2. Extrait le texte et découpe en chunks
+        chunks = pdf_service.traiter_pdf(contenu, fichier.filename)
+ 
+        # 3. Stocke les chunks dans ChromaDB (embed + sauvegarde)
+        nb_stockes = chroma_service.stocker_chunks(chunks)
+ 
+        return ImportResponse(
+            filename=fichier.filename,
+            chunks=nb_stockes,
+            message=f"'{fichier.filename}' importé avec succès — {nb_stockes} chunks créés"
         )
-    ]
  
-    return RapportResponse(
-        date=date.today(),
-        stats=StatsRapport(
-            critiques=1,
-            avertissements=1,
-            fichiers_analyses=2,
-            cours_a_relire=3
-        ),
-        erreurs=erreurs_mock
-    )
+    except ValueError as e:
+        # PDF sans texte extractible (scanné en image par exemple)
+        raise HTTPException(status_code=422, detail=str(e))
  
- 
-@router.get("/export")
-async def exporter_rapport_html():
-    """
-    Génère et retourne le rapport du jour sous forme de fichier HTML téléchargeable.
-    response_class=None pour l'instant — on branchera FileResponse semaine 2.
-    """
- 
- 
-    return {"message": "[MOCK] Export HTML pas encore branché"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import : {str(e)}")
