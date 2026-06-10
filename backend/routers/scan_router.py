@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ScanResponse, Erreur, CoursLie
-from backend.services import llm_service
+from backend.services import llm_service, sqlite_service
 
  
 router = APIRouter()
@@ -32,6 +32,9 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
         # Analyse via LLM (mock ou OpenAI) + enrichissement RAG
         erreurs = llm_service.analyser_code(contenu, fichier.filename)
  
+        # Sauvegarde dans SQLite pour le rapport journalier
+        sqlite_service.sauvegarder_analyse(fichier.filename, erreurs)
+
         nb = len(erreurs)
         return ScanResponse(
             fichier=fichier.filename,
