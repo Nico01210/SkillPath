@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import import_router, scan_router, rapport_router, stats_router
 from backend.services import sqlite_service
 
-app = FastAPI(title="Coach IA", version="0.1.0")
+app = FastAPI(title="SkillPath", version="0.1.0")
  
 # CORS — autorise le frontend local (port 5500 si Live Server, ou même origine)
 app.add_middleware(
@@ -31,4 +31,4 @@ def startup():
 @app.get("/health")
 def health():
     """Endpoint de vérification — utile pour tester que le serveur tourne."""
-    return {"status": "ok", "app": "Coach IA"}
+    return {"status": "ok", "app": "SkillPath"}

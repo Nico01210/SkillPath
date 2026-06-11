@@ -19,5 +19,5 @@ async def exporter_rapport_html():
     return FileResponse(
         path=chemin,
         media_type="text/html",
-        filename=f"coach_ia_rapport_{rapport.date}.html"
+        filename=f"SkillPath_rapport_{rapport.date}.html"
     )

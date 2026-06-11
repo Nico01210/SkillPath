@@ -1,4 +1,4 @@
-# Coach IA
+# SkillPath
 
 Application web locale qui analyse ton code, identifie tes lacunes et te renvoie vers les cours pertinents.
 
@@ -12,12 +12,11 @@ Application web locale qui analyse ton code, identifie tes lacunes et te renvoie
 
 ## Installation
 
-bash
 
 ```bash
 # 1. Cloner le projet
 git clone ...
-cd coach_ia
+cd SkillPath
 
 # 2. Créer l'environnement virtuel
 python -m venv .venv
@@ -43,7 +42,7 @@ uvicorn main:app --reload
 ## Structure
 
 ```
-coach_ia/
+SkillPath/
 ├── main.py                  # Point d'entrée FastAPI
 ├── requirements.txt
 ├── .env.example

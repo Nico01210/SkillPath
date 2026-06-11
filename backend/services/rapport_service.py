@@ -88,7 +88,7 @@ def generer_html(rapport: RapportResponse) -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Coach IA — Rapport du {rapport.date}</title>
+  <title>SkillPath — Rapport du {rapport.date}</title>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -130,7 +130,7 @@ def generer_html(rapport: RapportResponse) -> str:
   <div class="container">
     <header>
       <div>
-        <h1>Coach IA — Rapport du {rapport.date}</h1>
+        <h1>SkillPath — Rapport du {rapport.date}</h1>
         <p class="subtitle">{rapport.stats.fichiers_analyses} fichier(s) analysé(s) · {len(rapport.erreurs)} erreur(s) détectée(s)</p>
       </div>
     </header>
@@ -144,7 +144,7 @@ def generer_html(rapport: RapportResponse) -> str:
  
     {cartes_html}
  
-    <footer>Généré par Coach IA · {rapport.date}</footer>
+    <footer>Généré par SkillPath · {rapport.date}</footer>
   </div>
 </body>
 </html>"""
