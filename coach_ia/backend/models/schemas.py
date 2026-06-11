@@ -48,3 +48,32 @@ class RapportResponse(BaseModel):
     date: date
     stats: StatsRapport
     erreurs: list[Erreur]   # toutes les erreurs du jour
+
+
+# ─── STATS DASHBOARD ──────────────────────────────────────
+# Progression hebdomadaire et mensuelle
+ 
+class PointCourbe(BaseModel):
+    date: str               # ex: "2026-06-09"
+    total_erreurs: int
+    critiques: int
+    avertissements: int
+ 
+class ErreurRecurrente(BaseModel):
+    titre: str              # nombre de fois détectée sur la période
+    occurrences: int
+ 
+class CoursFrequent(BaseModel):
+    titre: str              # nombre de fois recommandé
+    recommandations: int
+ 
+# Ce que retourne GET /stats/dashboard
+class StatsResponse(BaseModel):
+    periode: str            # "semaine" ou "mois"
+    date_debut: str
+    date_fin: str
+    total_fichiers: int
+    total_erreurs: int
+    courbe: list[PointCourbe]
+    erreurs_recurrentes: list[ErreurRecurrente]
+    cours_frequents: list[CoursFrequent]

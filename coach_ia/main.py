@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import import_router, scan_router, rapport_router
+from backend.routers import import_router, scan_router, rapport_router, stats_router
 from backend.services import sqlite_service
 
 app = FastAPI(title="Coach IA", version="0.1.0")
@@ -21,7 +21,7 @@ app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 app.include_router(import_router.router, prefix="/import", tags=["Import"])
 app.include_router(scan_router.router, prefix="/scan", tags=["Scan"])
 app.include_router(rapport_router.router, prefix="/rapport", tags=["Rapport"])
-
+app.include_router(stats_router.router, prefix="/stats", tags=["Stats"])
 
 @app.on_event("startup")
 def startup():
