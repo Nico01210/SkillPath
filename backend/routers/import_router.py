@@ -1,10 +1,11 @@
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ImportResponse
- 
+from backend.services import pdf_services, chroma_service
+
 router = APIRouter()
- 
- 
+
+
 @router.post("/", response_model=ImportResponse)
 async def importer_pdf(fichier: UploadFile = File(...)):
     """
@@ -12,17 +13,21 @@ async def importer_pdf(fichier: UploadFile = File(...)):
     UploadFile : type FastAPI qui représente un fichier envoyé depuis le navigateur.
     File(...)  : le "..." signifie que le champ est obligatoire.
     """
- 
-    # Vérification du type de fichier
+
     if not fichier.filename.endswith(".pdf"):
-        # HTTPException : façon FastAPI de retourner une erreur HTTP propre
         raise HTTPException(status_code=400, detail="Le fichier doit être un PDF")
- 
- 
-    # Données fictives pour tester que l'endpoint répond
-    return ImportResponse(
-        filename=fichier.filename,
-        chunks=0,
-        message=f"[MOCK] {fichier.filename} reçu — service PDF pas encore branché"
-    )
+
+    try:
+        pdf_bytes = await fichier.read()
+        chunks = pdf_services.traiter_pdf(pdf_bytes, fichier.filename)
+        nb = chroma_service.stocker_chunks(chunks)
+        return ImportResponse(
+            filename=fichier.filename,
+            chunks=nb,
+            message=f"{nb} chunks indexés depuis '{fichier.filename}'"
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur import : {str(e)}")
  

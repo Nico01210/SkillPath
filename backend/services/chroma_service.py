@@ -1,19 +1,18 @@
 import chromadb
+from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
 from backend.config import settings
- 
- 
+
+
 # Nom de la collection ChromaDB — comme une table en SQL
 COLLECTION_NAME = "cours"
- 
- 
+
+
 def get_client() -> chromadb.PersistentClient:
-    """
-    Retourne un client ChromaDB persistant.
-    PersistentClient = les données sont sauvegardées sur disque entre les sessions.
-    Sans ça, ChromaDB repart de zéro à chaque redémarrage.
-    """
-    return chromadb.PersistentClient(path=settings.chroma_db_path)
+    return chromadb.PersistentClient(
+        path=settings.chroma_db_path,
+        settings=ChromaSettings(anonymized_telemetry=False),
+    )
  
  
 def get_collection():
@@ -74,7 +73,10 @@ def rechercher(query: str, n_resultats: int = 3) -> list[dict]:
         → retourne les chunks sur le principe de responsabilité unique
     """
     collection = get_collection()
- 
+    n_resultats = min(n_resultats, collection.count())
+    if n_resultats == 0:
+        return []
+
     resultats = collection.query(
         query_texts=[query],
         n_results=n_resultats,
