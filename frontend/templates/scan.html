@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Scanner du code{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Scanner du code</h1>
+  <p class="page-subtitle">Téléverse un fichier, SkillPath détecte les erreurs et te renvoie aux bons chapitres</p>
+</div>
+
+<!-- Drop zone — identique à import -->
+<div id="stateUpload">
+  <div class="drop-zone centered" id="dropZone">
+    <svg class="drop-zone-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="10,24 10,30 30,30 30,24"/>
+      <polyline points="20,10 20,24"/>
+      <polyline points="14,16 20,10 26,16"/>
+    </svg>
+    <p class="drop-zone-title">Dépose un fichier de code</p>
+    <p class="drop-zone-hint">.py · .js · .ts · .java · .go</p>
+    <input type="file" id="fileInput" accept=".py,.js,.ts,.java,.go,.php,.cpp,.c,.rb">
+  </div>
+</div>
+
+<!-- État après sélection -->
+<div id="stateFile" class="hidden">
+
+  <div class="file-result-card">
+    <div class="file-result-icon" id="fileResultIcon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+      </svg>
+    </div>
+    <div class="file-result-info">
+      <span class="file-result-name" id="resultFileName"></span>
+      <span class="file-result-meta" id="resultFileMeta"></span>
+    </div>
+    <button class="btn btn-primary btn-sm" id="reanalyseBtn" onclick="lancerScan()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 8a6 6 0 1 0 1-3.5"/><polyline points="2 2 2 5.5 5.5 5.5"/>
+      </svg>
+      <span id="reanalyseBtnText">Ré-analyser</span>
+      <span id="reanalyseLoader" class="loader hidden"></span>
+    </button>
+  </div>
+
+  <!-- Stats bar -->
+  <div id="statsBar" class="hidden stats-bar">
+    <div class="stats-bar-left">
+      <span class="stats-dot red"></span>
+      <span id="statsCritiques" class="stats-bar-text"></span>
+      <span class="stats-bar-sep">·</span>
+      <span class="stats-dot orange"></span>
+      <span id="statsAvertissements" class="stats-bar-text"></span>
+      <span class="stats-bar-sep" id="resolusSep" style="display:none">·</span>
+      <span class="stats-dot green" id="resolusDot" style="display:none"></span>
+      <span id="statsResolus" class="stats-bar-text" style="display:none"></span>
+    </div>
+    <span id="statsTotal" class="text-muted text-sm"></span>
+  </div>
+
+  <div id="feedback" class="hidden mt-16"></div>
+  <div id="errorList"></div>
+
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  let selectedFile = null;
+  let erreursCourantes = [];
+  let resolus = new Set();
+
+  const fileInput = document.getElementById('fileInput');
+  const dropZone  = document.getElementById('dropZone');
+
+  // ── Drag & Drop ──────────────────────────────────
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+  function handleFile(f) {
+    selectedFile = f;
+    resolus = new Set();
+    document.getElementById('stateUpload').classList.add('hidden');
+    document.getElementById('stateFile').classList.remove('hidden');
+    document.getElementById('resultFileName').textContent = f.name;
+    document.getElementById('resultFileMeta').textContent = 'Analyse en cours…';
+    document.getElementById('statsBar').classList.add('hidden');
+    document.getElementById('errorList').innerHTML = '';
+    hideFeedback();
+    lancerScan();
+  }
+
+  // ── Scan ─────────────────────────────────────────
+  async function lancerScan() {
+    if (!selectedFile) return;
+    setLoading(true);
+    hideFeedback();
+    resolus = new Set();
+    document.getElementById('statsBar').classList.add('hidden');
+    document.getElementById('errorList').innerHTML = '';
+
+    const formData = new FormData();
+    formData.append('fichier', selectedFile);
+    const debut = Date.now();
+
+    try {
+      const res = await fetch('/scan/', { method: 'POST', body: formData });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Erreur serveur'); }
+      const data = await res.json();
+
+      erreursCourantes = data.erreurs;
+
+      const duree = Math.round((Date.now() - debut) / 1000);
+      document.getElementById('resultFileMeta').textContent =
+        `Analyse terminée · analysé il y a ${duree < 60 ? duree + ' sec' : Math.round(duree / 60) + ' min'}`;
+
+      if (data.erreurs.length === 0) {
+        document.getElementById('fileResultIcon').innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>`;
+        document.getElementById('fileResultIcon').style.background = 'var(--green)';
+      }
+
+      renderResultats();
+
+    } catch (err) {
+      showFeedback('error', `Erreur : ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Rendu résultats ───────────────────────────────
+  function renderResultats() {
+    const erreurs        = erreursCourantes;
+    const nb             = erreurs.length;
+    const critiques      = erreurs.filter((e, i) => e.niveau === 'critique' && !resolus.has(i)).length;
+    const avertissements = erreurs.filter((e, i) => e.niveau === 'avertissement' && !resolus.has(i)).length;
+    const nbResolus      = resolus.size;
+
+    document.getElementById('statsCritiques').textContent      = `${critiques} critique${critiques > 1 ? 's' : ''}`;
+    document.getElementById('statsAvertissements').textContent = `${avertissements} avertissement${avertissements > 1 ? 's' : ''}`;
+    document.getElementById('statsTotal').textContent          = `${nb} problème${nb > 1 ? 's' : ''} détecté${nb > 1 ? 's' : ''}`;
+
+    const resolusEl  = document.getElementById('statsResolus');
+    const resolusDot = document.getElementById('resolusDot');
+    const resolusSep = document.getElementById('resolusSep');
+    if (nbResolus > 0) {
+      resolusEl.textContent    = `${nbResolus} résolu${nbResolus > 1 ? 's' : ''}`;
+      resolusEl.style.display  = '';
+      resolusDot.style.display = '';
+      resolusSep.style.display = '';
+    } else {
+      resolusEl.style.display  = 'none';
+      resolusDot.style.display = 'none';
+      resolusSep.style.display = 'none';
+    }
+
+    document.getElementById('statsBar').classList.remove('hidden');
+
+    if (nb === 0) {
+      document.getElementById('errorList').innerHTML = `
+        <div class="empty-state mt-24">
+          <p class="empty-state-title">Aucune erreur détectée 🎉</p>
+          <p class="empty-state-text">Ton code est propre sur ce fichier !</p>
+        </div>`;
+      return;
+    }
+
+    document.getElementById('errorList').innerHTML = erreurs.map((e, i) => renderErreur(e, i)).join('');
+  }
+
+  function renderErreur(e, index) {
+    const estResolu  = resolus.has(index);
+    const isCritique = e.niveau === 'critique';
+    const badgeClass = isCritique ? 'badge-critique' : 'badge-warning';
+    const badgeLabel = isCritique ? 'CRITIQUE' : 'AVERTISSEMENT';
+
+    if (estResolu) {
+      return `
+        <div class="error-card resolu">
+          <div class="error-card-header">
+            <span class="badge badge-resolu">✓ RÉSOLU</span>
+            <span class="error-title resolu-title">${e.titre}</span>
+            <span class="error-location-badge">${e.fichier}:${e.ligne}</span>
+            <button class="btn-icon" onclick="rouvrir(${index})">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 8a6 6 0 1 0 1-3.5"/><polyline points="2 2 2 5.5 5.5 5.5"/>
+              </svg>
+              Rouvrir
+            </button>
+          </div>
+        </div>`;
+    }
+
+    const coursHTML = e.cours.length
+      ? e.cours.map(c => `<span class="tag-cours">📖 ${c.titre}</span>`).join('')
+      : `<span class="text-muted text-sm">Aucun cours lié</span>`;
+
+    return `
+      <div class="error-card ${isCritique ? '' : 'warning'}">
+        <div class="error-card-header">
+          <span class="badge ${badgeClass}">${badgeLabel}</span>
+          <span class="error-title">${e.titre}</span>
+          <span class="error-location-badge">${e.fichier}:${e.ligne}</span>
+        </div>
+        <p class="error-description">${e.description}</p>
+        <div class="code-block">
+          <div class="code-block-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot orange"></span>
+            <span class="terminal-dot green"></span>
+            <span class="code-block-filename">${e.fichier}:${e.ligne}</span>
+          </div>
+          <pre class="code-block-content">${escapeHtml(e.extrait)}</pre>
+        </div>
+        <div class="cours-section">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted);flex-shrink:0">
+            <rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/>
+          </svg>
+          <span class="cours-section-label">Cours à relire :</span>
+          ${coursHTML}
+        </div>
+        <div class="error-card-footer">
+          <button class="btn-resolu" onclick="marquerResolu(${index})">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 8 6 11 13 4"/>
+            </svg>
+            Marquer comme résolue
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function marquerResolu(index) {
+    resolus.add(index);
+    renderResultats();
+  }
+
+  function rouvrir(index) {
+    resolus.delete(index);
+    renderResultats();
+  }
+
+  function setLoading(on) {
+    document.getElementById('reanalyseBtn').disabled = on;
+    document.getElementById('reanalyseBtnText').textContent = on ? 'Analyse...' : 'Ré-analyser';
+    document.getElementById('reanalyseLoader').classList.toggle('hidden', !on);
+  }
+
+  function showFeedback(type, msg) {
+    const el = document.getElementById('feedback');
+    el.className = `alert alert-${type === 'success' ? 'success' : 'error'} mt-16`;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function hideFeedback() {
+    const el = document.getElementById('feedback');
+    if (el) el.classList.add('hidden');
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+</script>
+{% endblock %}
