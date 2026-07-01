@@ -9,6 +9,7 @@ class ImportResponse(BaseModel):
     filename: str       # nom du fichier importé
     chunks: int         # nombre de morceaux créés (ex: 12)
     message: str        # confirmation lisible
+    pages: int
 
 
 # ─── SCAN ─────────────────────────────────────────────────

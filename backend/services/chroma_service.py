@@ -100,3 +100,8 @@ def rechercher(query: str, n_resultats: int = 3) -> list[dict]:
 def compter_chunks() -> int:
     """Utilitaire — retourne le nombre total de chunks stockés."""
     return get_collection().count()
+
+
+def supprimer_chunks(source: str) -> None:
+    """Supprime tous les chunks associés à un fichier source donné."""
+    get_collection().delete(where={"source": source})

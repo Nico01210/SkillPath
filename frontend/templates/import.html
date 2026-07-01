@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Import cours{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Import cours</h1>
+  <p class="page-subtitle">Importe tes cours PDF pour alimenter l'analyse personnalisée</p>
+</div>
+
+<div class="drop-zone" id="dropZone">
+  <svg class="drop-zone-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 28V12a2 2 0 012-2h12l6 6v12a2 2 0 01-2 2H10a2 2 0 01-2-2z"/>
+    <path d="M22 10v6h6M20 18v8M16 22l4 4 4-4"/>
+  </svg>
+  <p class="drop-zone-title">Glisse ton PDF ici</p>
+  <p class="drop-zone-hint">ou clique pour parcourir · PDF uniquement · max 10 Mo</p>
+  <input type="file" id="fileInput" accept=".pdf">
+</div>
+
+<div id="filePreview" class="hidden mt-16">
+  <div class="card flex gap-12">
+    <div class="pdf-icon-sm">PDF</div>
+    <span id="fileName" class="file-preview-name"></span>
+    <span id="fileSize" class="text-muted"></span>
+    <button class="btn btn-secondary btn-sm" onclick="resetFile()">✕</button>
+  </div>
+</div>
+
+<div class="mt-24">
+  <button class="btn btn-primary" id="importBtn" onclick="lancerImport()" disabled>
+    <span id="importBtnText">Importer un cours</span>
+    <span id="importLoader" class="loader hidden"></span>
+  </button>
+</div>
+
+<div id="feedback" class="hidden mt-16"></div>
+
+<div class="divider"></div>
+
+<div class="section-header">
+  <p class="section-label">Cours importés</p>
+  <span id="importStats" class="text-muted text-sm"></span>
+</div>
+
+<div id="importList">
+  <div class="empty-state">
+    <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 40V12a2 2 0 012-2h16l8 8v22a2 2 0 01-2 2H14a2 2 0 01-2-2z"/>
+      <path d="M28 10v8h8"/>
+    </svg>
+    <p class="empty-state-title">Aucun cours importé</p>
+    <p class="empty-state-text">Importe un premier PDF pour commencer</p>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  let selectedFile = null;
+  let metaStore = JSON.parse(localStorage.getItem('sp_meta') || '{}');
+
+  const dropZone  = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+  // ── Drag & Drop ──────────────────────────────────
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+  function handleFile(f) {
+    if (f.type !== 'application/pdf') { showFeedback('error', 'Seuls les fichiers PDF sont acceptés.'); return; }
+    if (f.size > 10 * 1024 * 1024)   { showFeedback('error', 'Fichier trop volumineux (max 10 Mo).'); return; }
+    selectedFile = f;
+    document.getElementById('fileName').textContent = f.name;
+    document.getElementById('fileSize').textContent = formatSize(f.size);
+    document.getElementById('filePreview').classList.remove('hidden');
+    document.getElementById('importBtn').disabled = false;
+    hideFeedback();
+  }
+
+  function resetFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    document.getElementById('filePreview').classList.add('hidden');
+    document.getElementById('importBtn').disabled = true;
+  }
+
+  // ── Import ───────────────────────────────────────
+  async function lancerImport() {
+    if (!selectedFile) return;
+    setLoading(true);
+    hideFeedback();
+
+    const formData = new FormData();
+    formData.append('fichier', selectedFile);
+
+    try {
+      const res = await fetch('/import/', { method: 'POST', body: formData });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Erreur serveur'); }
+      const data = await res.json();
+
+      metaStore[data.filename] = {
+        chunks: data.chunks,
+        pages:  data.pages,
+        date:   new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+      };
+      localStorage.setItem('sp_meta', JSON.stringify(metaStore));
+
+      showFeedback('success', `✓ ${data.filename} importé — ${data.chunks} chunks créés`);
+      resetFile();
+      await chargerListe();
+
+    } catch (err) {
+      showFeedback('error', `Erreur : ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Liste cours ──────────────────────────────────
+  async function chargerListe() {
+    try {
+      const res = await fetch('/import/liste');
+      const data = await res.json();
+      renderListe(data.cours);
+    } catch { /* silencieux si backend down */ }
+  }
+
+  function renderListe(fichiers) {
+    const container = document.getElementById('importList');
+
+    if (!fichiers.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 40V12a2 2 0 012-2h16l8 8v22a2 2 0 01-2 2H14a2 2 0 01-2-2z"/>
+            <path d="M28 10v8h8"/>
+          </svg>
+          <p class="empty-state-title">Aucun cours importé</p>
+          <p class="empty-state-text">Importe un premier PDF pour commencer</p>
+        </div>`;
+      document.getElementById('importStats').textContent = '';
+      return;
+    }
+
+    const totalChunks = fichiers.reduce((acc, f) => acc + (metaStore[f]?.chunks || 0), 0);
+    document.getElementById('importStats').textContent = `${fichiers.length} cours · ${totalChunks} chunks indexés`;
+
+    container.innerHTML = fichiers.map(nom => {
+      const meta   = metaStore[nom] || {};
+      const pages  = meta.pages  ? `${meta.pages} pages · ` : '';
+      const date   = meta.date   ? `importé le ${meta.date}` : '';
+      const chunks = meta.chunks ?? '—';
+      return `
+        <div class="cours-card">
+          <div class="pdf-icon-sm">PDF</div>
+          <div class="cours-card-info">
+            <div class="cours-card-title">${nom}</div>
+            <div class="cours-card-meta">PDF · ${pages}${date}</div>
+          </div>
+          <span class="badge-indexed">Indexé</span>
+          <span class="badge-chunks">${chunks} chunks</span>
+          <button class="btn-icon" onclick="supprimerCours('${nom}')" title="Supprimer">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 4h10M6 4V3h4v1M5 4l.5 9h5L11 4"/>
+            </svg>
+          </button>
+        </div>`;
+    }).join('');
+  }
+
+  async function supprimerCours(nom) {
+    if (!confirm(`Supprimer "${nom}" de la liste ?`)) return;
+
+    try {
+      const res = await fetch(`/import/${encodeURIComponent(nom)}`, { method: 'DELETE' });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Erreur serveur'); }
+
+      delete metaStore[nom];
+      localStorage.setItem('sp_meta', JSON.stringify(metaStore));
+      await chargerListe();
+
+    } catch (err) {
+      showFeedback('error', `Erreur : ${err.message}`);
+    }
+  }
+
+  // ── Helpers ──────────────────────────────────────
+  function setLoading(on) {
+    document.getElementById('importBtn').disabled = on;
+    document.getElementById('importBtnText').textContent = on ? 'Importation...' : 'Importer un cours';
+    document.getElementById('importLoader').classList.toggle('hidden', !on);
+  }
+
+  function showFeedback(type, msg) {
+    const el = document.getElementById('feedback');
+    el.className = `alert alert-${type === 'success' ? 'success' : 'error'} mt-16`;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function hideFeedback() { document.getElementById('feedback').classList.add('hidden'); }
+
+  function formatSize(bytes) {
+    return bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(0)} Ko`
+      : `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
+  }
+
+  chargerListe();
+</script>
+{% endblock %}

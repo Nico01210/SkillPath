@@ -30,14 +30,15 @@ async def importer_pdf(fichier: UploadFile = File(...)):
             f.write(contenu)
  
         # 3. Extrait le texte et découpe en chunks
-        chunks = pdf_service.traiter_pdf(contenu, fichier.filename)
- 
+        resultat = pdf_service.traiter_pdf(contenu, fichier.filename)
+
         # 4. Stocke les chunks dans ChromaDB (embed + sauvegarde)
-        nb_stockes = chroma_service.stocker_chunks(chunks)
- 
+        nb_stockes = chroma_service.stocker_chunks(resultat["chunks"])
+
         return ImportResponse(
             filename=fichier.filename,
             chunks=nb_stockes,
+            pages=resultat["pages"],
             message=f"'{fichier.filename}' importé avec succès — {nb_stockes} chunks créés"
         )
  
@@ -68,6 +69,25 @@ async def lister_cours():
     }
  
  
+@router.delete("/{nom_fichier}")
+async def supprimer_cours(nom_fichier: str):
+    """
+    Supprime un PDF de uploads/ ainsi que ses chunks dans ChromaDB.
+    """
+    if os.path.basename(nom_fichier) != nom_fichier:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+
+    chemin = os.path.join(settings.uploads_path, nom_fichier)
+
+    if not os.path.isfile(chemin):
+        raise HTTPException(status_code=404, detail=f"'{nom_fichier}' introuvable")
+
+    os.remove(chemin)
+    chroma_service.supprimer_chunks(nom_fichier)
+
+    return {"message": f"'{nom_fichier}' supprimé avec succès"}
+
+
 @router.post("/reimporter-tout")
 async def reimporter_tout():
     """
@@ -94,8 +114,8 @@ async def reimporter_tout():
             with open(chemin, "rb") as f:
                 contenu = f.read()
  
-            chunks = pdf_service.traiter_pdf(contenu, nom_fichier)
-            nb = chroma_service.stocker_chunks(chunks)
+            resultat = pdf_service.traiter_pdf(contenu, nom_fichier)
+            nb = chroma_service.stocker_chunks(resultat["chunks"])
             resultats.append({"fichier": nom_fichier, "chunks": nb, "statut": "ok"})
  
         except Exception as e:

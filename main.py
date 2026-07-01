@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
+from fastapi.templating import Jinja2Templates
 
 from backend.routers import import_router, scan_router, rapport_router, stats_router
 from backend.services import sqlite_service
 
 app = FastAPI(title="SkillPath", version="0.1.0")
+templates = Jinja2Templates(directory="frontend/templates")
  
 # CORS — autorise le frontend local (port 5500 si Live Server, ou même origine)
 app.add_middleware(
@@ -32,3 +35,25 @@ def startup():
 def health():
     """Endpoint de vérification — utile pour tester que le serveur tourne."""
     return {"status": "ok", "app": "SkillPath"}
+
+# ── Routes pages frontend ─────────────────────────
+ 
+@app.get("/")
+def index(request: Request):
+    return templates.TemplateResponse("import.html", {"request": request, "active_page": "import"})
+ 
+@app.get("/import-cours")
+def page_import(request: Request):
+    return templates.TemplateResponse("import.html", {"request": request, "active_page": "import"})
+ 
+@app.get("/scan-code")
+def page_scan(request: Request):
+    return templates.TemplateResponse("scan.html", {"request": request, "active_page": "scan"})
+ 
+@app.get("/rapport-jour")
+def page_rapport(request: Request):
+    return templates.TemplateResponse("rapport.html", {"request": request, "active_page": "rapport"})
+ 
+@app.get("/dashboard")
+def page_dashboard(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request, "active_page": "dashboard"})

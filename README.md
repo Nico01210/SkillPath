@@ -12,7 +12,6 @@ Application web locale qui analyse ton code, identifie tes lacunes et te renvoie
 
 ## Installation
 
-
 ```bash
 # 1. Cloner le projet
 git clone ...

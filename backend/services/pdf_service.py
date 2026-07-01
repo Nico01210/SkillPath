@@ -16,13 +16,14 @@ def extraire_texte(pdf_bytes: bytes) -> str:
     """
     # fitz.open avec stream= lit depuis la mémoire, pas depuis un fichier
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    nb_pages = len(doc)
  
     texte_complet = []
     for page in doc:
         texte_complet.append(page.get_text())
  
     doc.close()
-    return "\n".join(texte_complet)
+    return "\n".join(texte_complet), nb_pages
  
  
 def decouper_en_chunks(texte: str, source: str) -> list[dict]:
@@ -69,11 +70,14 @@ def traiter_pdf(pdf_bytes: bytes, filename: str) -> list[dict]:
     Fonction principale appelée par import_router.
     Lit le PDF et retourne les chunks prêts pour ChromaDB.
     """
-    texte = extraire_texte(pdf_bytes)
- 
+    texte, nb_pages = extraire_texte(pdf_bytes)
+
     if not texte.strip():
         raise ValueError(f"Le PDF '{filename}' ne contient pas de texte extractible. "
                          "Vérifier qu'il ne se compose pas d'une image.")
  
     chunks = decouper_en_chunks(texte, source=filename)
-    return chunks
+    return {
+        "chunks": chunks,
+        "pages": nb_pages
+    }

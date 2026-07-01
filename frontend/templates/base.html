@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkillPath — {% block title %}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar">
+    <a href="/" class="sidebar-logo">
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="20" height="20" rx="5" fill="#185FA5"/>
+        <path d="M6 13l4-4-4-4M11 15h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      SkillPath
+    </a>
+    <div class="sidebar-divider"></div>
+    <p class="sidebar-label">Navigation</p>
+    <ul class="nav-list">
+
+      <li class="nav-item {% if active_page == 'import' %}active{% endif %}">
+        <a href="/import-cours">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 2h7l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/>
+            <path d="M10 2v3h3M8 8v4M6 10l2 2 2-2"/>
+          </svg>
+          Import cours
+        </a>
+      </li>
+
+      <li class="nav-item {% if active_page == 'scan' %}active{% endif %}">
+        <a href="/scan-code">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 4h12M2 8h12M2 12h8"/>
+            <circle cx="13" cy="12" r="2.5"/>
+            <path d="M14.8 13.8l1.5 1.5"/>
+          </svg>
+          Scanner du code
+        </a>
+      </li>
+
+      <li class="nav-item {% if active_page == 'rapport' %}active{% endif %}">
+        <a href="/rapport-jour">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="12" height="12" rx="2"/>
+            <path d="M5 6h6M5 9h4"/>
+          </svg>
+          Rapport du jour
+        </a>
+      </li>
+
+      <li class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+        <a href="/dashboard">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12l4-4 3 3 5-6"/>
+          </svg>
+          Ma progression
+        </a>
+      </li>
+    </ul>
+        <!-- Profil utilisateur -->
+    <div class="sidebar-profile">
+      <div class="avatar" id="userAvatar">NP</div>
+      <div class="profile-info">
+        <span class="profile-name" id="userName">Nicolas P.</span>
+        <span class="profile-role" id="userRole">Reconversion</span>
+      </div>
+    </div>
+  </aside>
+
+
+<script>
+      // ── Profil ────────────────────────────────────────
+    const profile = JSON.parse(localStorage.getItem('sp_profile') || 'null');
+    if (profile) {
+      document.getElementById('userName').textContent  = profile.name;
+      document.getElementById('userRole').textContent  = profile.role;
+      document.getElementById('userAvatar').textContent = profile.initials;
+    }
+ 
+    renderStreak();
+ 
+    // Expose pour que scan.html puisse marquer le jour comme actif
+    window.markStreakToday = function() {
+      const days = getStreakDays();
+      if (!days.includes(today)) {
+        days.push(today);
+        localStorage.setItem(STREAK_KEY, JSON.stringify(days));
+        renderStreak();
+      }
+    };
+  </script>
+  <!-- ═══ MAIN ═══ -->
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+
+</body>
+</html>
