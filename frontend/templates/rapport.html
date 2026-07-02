@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Rapport du jour{% endblock %}
+
+{% block content %}
+
+<div class="page-header rapport-header">
+  <div>
+    <h1 class="page-title">Rapport du jour</h1>
+    <p class="page-subtitle" id="rapportSubtitle">Chargement…</p>
+  </div>
+  <a id="exportBtn" href="/rapport/export" class="btn btn-secondary">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 2v9M4 7l4 4 4-4"/><path d="M2 13h12"/>
+    </svg>
+    Exporter en HTML
+  </a>
+</div>
+
+<!-- Stat cards -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card">
+    <div class="stat-number red" id="statCritiques">—</div>
+    <div class="stat-label">Erreurs critiques</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number orange" id="statAvertissements">—</div>
+    <div class="stat-label">Avertissements</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number blue" id="statFichiers">—</div>
+    <div class="stat-label">Fichiers analysés</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number green" id="statCours">—</div>
+    <div class="stat-label">Cours à relire</div>
+  </div>
+</div>
+
+<!-- Erreurs du jour -->
+<p class="section-label">Erreurs du jour</p>
+<div id="errorList">
+  <div class="empty-state">
+    <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="24" cy="24" r="20"/>
+      <path d="M24 16v8M24 32h.01"/>
+    </svg>
+    <p class="empty-state-title">Aucune analyse aujourd'hui</p>
+    <p class="empty-state-text">Lance un scan pour voir apparaître le rapport ici</p>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  // ── Chargement du rapport ────────────────────────
+  async function chargerRapport() {
+    try {
+      const res = await fetch('/rapport/');
+      if (!res.ok) throw new Error('Erreur serveur');
+      const data = await res.json();
+      renderRapport(data);
+    } catch (err) {
+      document.getElementById('rapportSubtitle').textContent = 'Impossible de charger le rapport.';
+    }
+  }
+
+  function renderRapport(data) {
+    // Subtitle — date lisible
+    const date = new Date(data.date);
+    const dateStr = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById('rapportSubtitle').textContent =
+      `${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)} · synthèse de tes scans`;
+
+    // Stats
+    document.getElementById('statCritiques').textContent     = data.stats.critiques;
+    document.getElementById('statAvertissements').textContent = data.stats.avertissements;
+    document.getElementById('statFichiers').textContent       = data.stats.fichiers_analyses;
+    document.getElementById('statCours').textContent          = data.stats.cours_a_relire + ' chap.';
+
+    // Erreurs
+    if (!data.erreurs.length) return;
+
+    document.getElementById('errorList').innerHTML = data.erreurs.map(e => renderErreur(e)).join('');
+  }
+
+  function renderErreur(e) {
+    const isCritique = e.niveau === 'critique';
+    const badgeClass = isCritique ? 'badge-critique' : 'badge-warning';
+    const badgeLabel = isCritique ? 'CRITIQUE' : 'AVERTISSEMENT';
+
+    const coursHTML = e.cours.length
+      ? e.cours.map(c => `<span class="tag-cours">📖 ${c.titre}</span>`).join('')
+      : `<span class="text-muted text-sm">Aucun cours lié</span>`;
+
+    return `
+      <div class="error-card ${isCritique ? '' : 'warning'}">
+        <div class="error-card-header">
+          <span class="badge ${badgeClass}">${badgeLabel}</span>
+          <span class="error-title">${e.titre}</span>
+          <span class="error-location-badge">${e.fichier}:${e.ligne}</span>
+        </div>
+        <p class="error-description">${e.description}</p>
+        <div class="code-block">
+          <div class="code-block-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot orange"></span>
+            <span class="terminal-dot green"></span>
+            <span class="code-block-filename">${e.fichier}:${e.ligne}</span>
+          </div>
+          <pre class="code-block-content">${escapeHtml(e.extrait)}</pre>
+        </div>
+        <div class="cours-section">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted);flex-shrink:0">
+            <rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/>
+          </svg>
+          <span class="cours-section-label">Cours à relire :</span>
+          ${coursHTML}
+        </div>
+      </div>`;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  chargerRapport();
+</script>
+{% endblock %}

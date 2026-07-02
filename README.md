@@ -1,6 +1,6 @@
 # SkillPath
 
-Application web locale qui analyse ton code, identifie tes lacunes et te renvoie vers les cours pertinents.
+Application web locale qui analyse ton code, identifie tes lacunes, te renvoie vers les cours pertinents et fait un suivi de ta progression.
 
 ## Stack
 

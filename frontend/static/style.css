@@ -119,8 +119,8 @@ body {
 .nav-item a:hover { background: rgba(230, 241, 251, 0.08); color: var(--blue-light); }
 .nav-item a:hover svg { color: var(--blue-light); }
 
-.nav-item.active a { background: var(--blue-light); color: var(--blue); font-weight: 500; }
-.nav-item.active a svg { color: var(--blue); }
+.nav-item.active a { background: var(--blue); color: var(--blue-light); font-weight: 500; }
+.nav-item.active a svg { color: var(--blue-light); }
 
 /* ── Sidebar profil ──────────────────────────────── */
 .sidebar-profile {
@@ -273,7 +273,7 @@ body {
 .btn-primary          { background: var(--blue); color: #fff; }
 .btn-primary:hover    { opacity: 0.88; }
 
-.btn-secondary        { background: transparent; color: var(--text-primary); border: 0.5px solid var(--border); }
+.btn-secondary        { background: var(--blue); color: var(--text-primary); border: 0.5px solid var(--border); }
 .btn-secondary:hover  { background: rgba(255,255,255,0.05); }
 
 .btn-sm { padding: 6px 14px; font-size: 13px; }
@@ -528,6 +528,14 @@ body {
 
 /* Footer card — bouton résolu */
 .error-card-footer { border-top: 0.5px solid var(--border); padding-top: 12px; margin-top: 12px; }
+
+/* ── Rapport page ────────────────────────────────── */
+.rapport-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
 
 /* ── Utils ───────────────────────────────────────── */
 .hidden         { display: none !important; }
