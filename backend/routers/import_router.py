@@ -1,9 +1,19 @@
 
 import os
+import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ImportResponse
 from backend.services import pdf_service, chroma_service
 from backend.config import settings
+
+log = logging.getLogger(__name__)
+
+
+def _safe_filename(name: str) -> str:
+    base = os.path.basename(name or "")
+    if base in ("", ".", ".."):
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    return base
 
 router = APIRouter()
 
@@ -25,15 +35,21 @@ async def importer_pdf(fichier: UploadFile = File(...)):
  
         # 2. Sauvegarde une copie du PDF dans uploads/
         os.makedirs(settings.uploads_path, exist_ok=True)
-        chemin_sauvegarde = os.path.join(settings.uploads_path, fichier.filename)
+        chemin_sauvegarde = os.path.join(settings.uploads_path, _safe_filename(fichier.filename))
         with open(chemin_sauvegarde, "wb") as f:
             f.write(contenu)
- 
-        # 3. Extrait le texte et découpe en chunks
-        resultat = pdf_service.traiter_pdf(contenu, fichier.filename)
 
-        # 4. Stocke les chunks dans ChromaDB (embed + sauvegarde)
-        nb_stockes = chroma_service.stocker_chunks(resultat["chunks"])
+        try:
+            # 3. Extrait le texte et découpe en chunks
+            resultat = pdf_service.traiter_pdf(contenu, fichier.filename)
+
+            # 4. Stocke les chunks dans ChromaDB (embed + sauvegarde)
+            nb_stockes = chroma_service.stocker_chunks(resultat["chunks"])
+        except Exception:
+            # Le fichier ne doit pas rester orphelin si l'indexation échoue
+            if os.path.exists(chemin_sauvegarde):
+                os.remove(chemin_sauvegarde)
+            raise
 
         return ImportResponse(
             filename=fichier.filename,
@@ -41,12 +57,13 @@ async def importer_pdf(fichier: UploadFile = File(...)):
             pages=resultat["pages"],
             message=f"'{fichier.filename}' importé avec succès — {nb_stockes} chunks créés"
         )
- 
+
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
- 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import : {str(e)}")
+
+    except Exception:
+        log.exception("import failed for %s", fichier.filename)
+        raise HTTPException(status_code=500, detail="Erreur interne lors de l'import")
  
  
 @router.get("/liste")
@@ -82,8 +99,10 @@ async def supprimer_cours(nom_fichier: str):
     if not os.path.isfile(chemin):
         raise HTTPException(status_code=404, detail=f"'{nom_fichier}' introuvable")
 
-    os.remove(chemin)
+    # Supprime d'abord les chunks : si ça échoue, le fichier reste et l'opération
+    # peut être retentée sans laisser de vecteurs orphelins dans ChromaDB.
     chroma_service.supprimer_chunks(nom_fichier)
+    os.remove(chemin)
 
     return {"message": f"'{nom_fichier}' supprimé avec succès"}
 

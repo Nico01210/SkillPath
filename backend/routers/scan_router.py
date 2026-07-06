@@ -1,12 +1,15 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ScanResponse, Erreur, CoursLie
 from backend.services import llm_service, sqlite_service
+import logging
 
+
+log = logging.getLogger(__name__)
  
 router = APIRouter()
  
 # Extensions de fichiers de code acceptées
-EXTENSIONS_ACCEPTEES = {".py", ".js", ".ts", ".html", ".css", ".java"}
+EXTENSIONS_ACCEPTEES = {".py", ".js", ".ts", ".html", ".css", ".java", ".go", ".php", ".cpp", ".c", ".rb"}
  
  
 @router.post("/", response_model=ScanResponse)
@@ -19,10 +22,8 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
     # Vérification de l'extension
     extension = "." + fichier.filename.split(".")[-1]
     if extension not in EXTENSIONS_ACCEPTEES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Extension non supportée. Acceptées : {EXTENSIONS_ACCEPTEES}"
-        )
+        liste = ", ".join(sorted(EXTENSIONS_ACCEPTEES))
+        raise HTTPException(status_code=400, detail=f"Extension non supportée. Acceptées : {liste}")
 
     try:
         # Lit le contenu du fichier en texte
@@ -45,6 +46,7 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
     except UnicodeDecodeError:
         raise HTTPException(status_code=422, detail="Le fichier doit être en UTF-8")
  
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'analyse : {str(e)}")
+    except Exception:
+        log.exception("scan failed for %s", fichier.filename)
+        raise HTTPException(status_code=500, detail="Erreur interne lors de l'analyse")
  

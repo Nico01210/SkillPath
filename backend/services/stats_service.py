@@ -1,20 +1,13 @@
-import sqlite3
 from datetime import date, timedelta
 from collections import Counter
 import json
- 
-from backend.config import settings
+
+from backend.services import sqlite_service
 from backend.models.schemas import (
     StatsResponse, PointCourbe, ErreurRecurrente, CoursFrequent
 )
- 
- 
-def get_connexion() -> sqlite3.Connection:
-    conn = sqlite3.connect(settings.sqlite_db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
- 
- 
+
+
 def get_stats(periode: str = "semaine") -> StatsResponse:
     """
     Calcule les stats de progression sur 7 ou 30 jours.
@@ -25,12 +18,11 @@ def get_stats(periode: str = "semaine") -> StatsResponse:
     date_fin = date.today()
     date_debut = date_fin - timedelta(days=nb_jours - 1)
  
-    conn = get_connexion()
+    conn = sqlite_service.get_connexion()
     rows = conn.execute(
         "SELECT * FROM analyses WHERE date >= ? AND date <= ? ORDER BY date ASC",
         (date_debut.isoformat(), date_fin.isoformat())
     ).fetchall()
-    conn.close()
  
     # Parse toutes les erreurs
     toutes_erreurs = []

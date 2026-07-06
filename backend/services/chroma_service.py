@@ -1,4 +1,5 @@
 import chromadb
+import functools
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
 from backend.config import settings
@@ -6,33 +7,21 @@ from backend.config import settings
 
 # Nom de la collection ChromaDB — comme une table en SQL
 COLLECTION_NAME = "cours"
+def chunk_id(source: str, index: int) -> str:
+    return f"{source}__chunk_{index}"
 
-
-def get_client() -> chromadb.PersistentClient:
-    return chromadb.PersistentClient(
+@functools.lru_cache(maxsize=1)
+def get_collection():
+    client = chromadb.PersistentClient(
         path=settings.chroma_db_path,
         settings=ChromaSettings(anonymized_telemetry=False),
     )
- 
- 
-def get_collection():
-    """
-    Récupère (ou crée) la collection 'cours'.
-    get_or_create_collection : si elle existe déjà, on la récupère — pas d'erreur.
- 
-    embedding_functions.DefaultEmbeddingFunction() utilise le modèle
-    'all-MiniLM-L6-v2' en local — gratuit, pas d'appel API, ~80MB.
-    C'est lui qui transforme le texte en vecteurs.
-    """
-    client = get_client()
     embedding_fn = embedding_functions.DefaultEmbeddingFunction()
- 
     return client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=embedding_fn,
-        metadata={"hnsw:space": "cosine"}  # cosine = mesure de similarité sémantique
+        metadata={"hnsw:space": "cosine"}
     )
- 
  
 def stocker_chunks(chunks: list[dict]) -> int:
     """
@@ -49,7 +38,7 @@ def stocker_chunks(chunks: list[dict]) -> int:
     # - metadatas : infos supplémentaires (source, index...)
  
     documents = [c["text"] for c in chunks]
-    ids = [f"{c['source']}__chunk_{c['chunk_index']}" for c in chunks]
+    ids = [chunk_id(c["source"], c["chunk_index"]) for c in chunks]
     metadatas = [{"source": c["source"], "chunk_index": c["chunk_index"]} for c in chunks]
  
     # add() avec des ids existants lève une erreur — on utilise upsert()

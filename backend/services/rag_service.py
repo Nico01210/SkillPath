@@ -1,5 +1,6 @@
-from backend.services import chroma_service
 from backend.models.schemas import CoursLie
+from backend.services import chroma_service
+RELEVANCE_THRESHOLD = 0.3
  
  
 def trouver_cours_pertinents(description_erreur: str, n: int = 3) -> list[CoursLie]:
@@ -22,11 +23,11 @@ def trouver_cours_pertinents(description_erreur: str, n: int = 3) -> list[CoursL
     cours = []
     for r in resultats:
         # Ne garde que les résultats suffisamment pertinents
-        # score < 0.3 = trop éloigné sémantiquement, on l'ignore
-        if r["score"] >= 0.3:
+        # score < RELEVANCE_THRESHOLD = trop éloigné sémantiquement, on l'ignore
+        if r["score"] >= RELEVANCE_THRESHOLD:
             cours.append(CoursLie(
                 titre=f"{r['source']} — chunk {r['chunk_index']}",
-                chunk_id=f"{r['source']}__chunk_{r['chunk_index']}"
+                chunk_id=chroma_service.chunk_id(r["source"], r["chunk_index"])
             ))
  
     return cours
@@ -53,9 +54,9 @@ def construire_contexte(descriptions_erreurs: list[str]) -> str:
     for description in descriptions_erreurs:
         resultats = chroma_service.rechercher(description, n_resultats=2)
         for r in resultats:
-            chunk_id = f"{r['source']}__chunk_{r['chunk_index']}"
-            if chunk_id not in chunks_vus and r["score"] >= 0.3:
-                chunks_vus.add(chunk_id)
+            cid = chroma_service.chunk_id(r["source"], r["chunk_index"])
+            if cid not in chunks_vus and r["score"] >= RELEVANCE_THRESHOLD:
+                chunks_vus.add(cid)
                 blocs.append(
                     f"[Source: {r['source']} — chunk {r['chunk_index']}]\n{r['text']}"
                 )

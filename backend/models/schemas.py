@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from datetime import date
+from typing import Literal
 
 
 # ─── IMPORT ───────────────────────────────────────────────
@@ -20,7 +21,7 @@ class CoursLie(BaseModel):
     chunk_id: str       # identifiant du morceau dans ChromaDB
 
 class Erreur(BaseModel):
-    niveau: str         # "critique" ou "avertissement"
+    niveau: Literal["critique", "avertissement"]  
     titre: str          # ex: "Fonction trop longue"
     fichier: str        # ex: "main.py"
     ligne: int          # numéro de ligne

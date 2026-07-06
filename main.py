@@ -3,12 +3,24 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
+from pathlib import Path
+from contextlib import asynccontextmanager
+
 
 from backend.routers import import_router, scan_router, rapport_router, stats_router
 from backend.services import sqlite_service
 
-app = FastAPI(title="SkillPath", version="0.1.0")
-templates = Jinja2Templates(directory="frontend/templates")
+BASE_DIR = Path(__file__).resolve().parent
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    sqlite_service.init_db()
+    yield
+
+app = FastAPI(title="SkillPath", version="0.1.0", lifespan=lifespan)
+ 
+
+templates = Jinja2Templates(directory=BASE_DIR / "frontend" / "templates")
  
 # CORS — autorise le frontend local (port 5500 si Live Server, ou même origine)
 app.add_middleware(
@@ -19,18 +31,13 @@ app.add_middleware(
 )
  
  # Fichiers statiques (HTML/CSS/JS du frontend)
-app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "frontend" / "static"), name="static")
 
 app.include_router(import_router.router, prefix="/import", tags=["Import"])
 app.include_router(scan_router.router, prefix="/scan", tags=["Scan"])
 app.include_router(rapport_router.router, prefix="/rapport", tags=["Rapport"])
 app.include_router(stats_router.router, prefix="/stats", tags=["Stats"])
 
-@app.on_event("startup")
-def startup():
-    """Initialise la base SQLite au démarrage du serveur."""
-    sqlite_service.init_db()
- 
 @app.get("/health")
 def health():
     """Endpoint de vérification — utile pour tester que le serveur tourne."""

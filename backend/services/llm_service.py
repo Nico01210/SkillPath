@@ -1,13 +1,33 @@
 from backend.config import settings
 from backend.models.schemas import Erreur, CoursLie
 from backend.services import rag_service
+from openai import OpenAI
+
+import logging
+import re
+import json
+
  
+log = logging.getLogger(__name__)
+
+MOCK_MODE = not bool(settings.openai_api_key)
+log.warning("LLM — mode : %s", "MOCK" if MOCK_MODE else "OpenAI")
  
-# ── MODE MOCK ─────────────────────────────────────────────────────────────────
-# Passe à False quand tu as ta clé OpenAI dans le .env
-MOCK_MODE = True
-# ──────────────────────────────────────────────────────────────────────────────
- 
+def _parse_erreurs(texte: str) -> list[dict]:
+    texte = texte.strip()
+    # Retire les backticks ```json ... ``` si présents
+    if texte.startswith("```"):
+        texte = re.sub(r"^```(?:json)?\s*|\s*```$", "", texte, flags=re.MULTILINE).strip()
+    try:
+        data = json.loads(texte)
+    except json.JSONDecodeError:
+        log.warning("LLM non-JSON: %r", texte[:200])
+        return []
+    if not isinstance(data, list):
+        return []
+    # Valide que chaque erreur a les clés attendues
+    champs = {"niveau", "titre", "ligne", "description", "extrait"}
+    return [e for e in data if champs <= e.keys()]
  
 def analyser_code(contenu: str, filename: str) -> list[Erreur]:
     """
@@ -53,15 +73,8 @@ def _openai_analyser(contenu: str, filename: str) -> list[Erreur]:
     """
     Vrai appel OpenAI. Activé quand MOCK_MODE = False.
     """
-    from openai import OpenAI
-    import json
  
     client = OpenAI(api_key=settings.openai_api_key)
- 
-    # Contexte RAG — cours pertinents injectés dans le prompt
-    contexte = rag_service.construire_contexte([
-        "qualité du code", "bonnes pratiques", "clean code"
-    ])
  
     prompt_systeme = """Tu es un coach de code pour étudiant en reconversion.
 Analyse le code fourni et identifie les erreurs et mauvaises pratiques.
@@ -79,8 +92,6 @@ Format attendu :
  
     prompt_utilisateur = f"""Fichier : {filename}
  
-{contexte}
- 
 Code à analyser :
 {contenu}"""
  
@@ -95,7 +106,7 @@ Code à analyser :
     )
  
     texte = reponse.choices[0].message.content
-    erreurs_brutes = json.loads(texte)
+    erreurs_brutes = _parse_erreurs(texte)
  
     return _enrichir_avec_rag(erreurs_brutes, filename)
  

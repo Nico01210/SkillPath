@@ -4,15 +4,15 @@ from datetime import date, datetime
 from backend.config import settings
 from backend.models.schemas import Erreur
 
+_conn = None
 
-def get_connexion() -> sqlite3.Connection:
-    """
-    Retourne une connexion SQLite.
-    check_same_thread=False nécessaire pour FastAPI qui utilise plusieurs threads.
-    """
-    conn = sqlite3.connect(settings.sqlite_db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row  # retourne des dicts au lieu de tuples
-    return conn
+
+def get_connexion():
+    global _conn
+    if _conn is None:
+        _conn = sqlite3.connect(settings.sqlite_db_path, check_same_thread=False)
+        _conn.row_factory = sqlite3.Row
+    return _conn
 
 
 def init_db():
@@ -31,7 +31,6 @@ def init_db():
         )
     """)
     conn.commit()
-    conn.close()
 
 
 def sauvegarder_analyse(fichier: str, erreurs: list[Erreur]):
@@ -57,7 +56,6 @@ def sauvegarder_analyse(fichier: str, erreurs: list[Erreur]):
         )
     )
     conn.commit()
-    conn.close()
 
 
 def get_analyses_du_jour() -> list[dict]:
@@ -70,7 +68,6 @@ def get_analyses_du_jour() -> list[dict]:
         "SELECT * FROM analyses WHERE date = ?",
         (date.today().isoformat(),)
     ).fetchall()
-    conn.close()
 
     analyses = []
     for row in rows:
@@ -91,5 +88,4 @@ def compter_analyses_du_jour() -> int:
         "SELECT COUNT(*) FROM analyses WHERE date = ?",
         (date.today().isoformat(),)
     ).fetchone()[0]
-    conn.close()
     return count

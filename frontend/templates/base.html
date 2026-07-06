@@ -81,18 +81,6 @@
       document.getElementById('userRole').textContent  = profile.role;
       document.getElementById('userAvatar').textContent = profile.initials;
     }
- 
-    renderStreak();
- 
-    // Expose pour que scan.html puisse marquer le jour comme actif
-    window.markStreakToday = function() {
-      const days = getStreakDays();
-      if (!days.includes(today)) {
-        days.push(today);
-        localStorage.setItem(STREAK_KEY, JSON.stringify(days));
-        renderStreak();
-      }
-    };
   </script>
   <!-- ═══ MAIN ═══ -->
   <main class="main">

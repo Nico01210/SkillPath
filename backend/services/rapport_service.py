@@ -1,3 +1,4 @@
+import html
 import os
 from datetime import date
 from backend.services import sqlite_service
@@ -64,26 +65,26 @@ def generer_html(rapport: RapportResponse) -> str:
         niveau_label = "Critique" if e.niveau == "critique" else "Avertissement"
  
         cours_tags = "".join([
-            f'<span class="cours-tag">{c.titre}</span>'
+            f'<span class="cours-tag">{html.escape(c.titre)}</span>'
             for c in e.cours
         ]) or "<span class='no-cours'>Aucun cours lié</span>"
- 
+
         cartes_html += f"""
         <div class="card {niveau_class}">
           <div class="card-header">
             <span class="badge {niveau_class}">{niveau_label}</span>
-            <span class="card-title">{e.titre}</span>
-            <span class="card-meta">{e.fichier} · ligne {e.ligne}</span>
+            <span class="card-title">{html.escape(e.titre)}</span>
+            <span class="card-meta">{html.escape(e.fichier)} · ligne {e.ligne}</span>
           </div>
-          <p class="description">{e.description}</p>
-          <pre class="extrait">{e.extrait}</pre>
+          <p class="description">{html.escape(e.description)}</p>
+          <pre class="extrait">{html.escape(e.extrait)}</pre>
           <div class="cours-section">
             <span class="cours-label">📚 Cours à relire</span>
             <div class="cours-tags">{cours_tags}</div>
           </div>
         </div>"""
  
-    html = f"""<!DOCTYPE html>
+    html_content = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -149,10 +150,10 @@ def generer_html(rapport: RapportResponse) -> str:
 </body>
 </html>"""
  
-    return html
- 
- 
-def sauvegarder_html(html: str) -> str:
+    return html_content
+
+
+def sauvegarder_html(html_content: str) -> str:
     """
     Sauvegarde le HTML dans data/reports/ et retourne le chemin du fichier.
     """
@@ -160,6 +161,6 @@ def sauvegarder_html(html: str) -> str:
     chemin = os.path.join(settings.reports_path, f"rapport_{date.today().isoformat()}.html")
  
     with open(chemin, "w", encoding="utf-8") as f:
-        f.write(html)
+        f.write(html_content)
  
     return chemin
