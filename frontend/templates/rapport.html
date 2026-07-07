@@ -9,12 +9,15 @@
     <h1 class="page-title">Rapport du jour</h1>
     <p class="page-subtitle" id="rapportSubtitle">Chargement…</p>
   </div>
-  <a id="exportBtn" href="/rapport/export" class="btn btn-secondary">
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M8 2v9M4 7l4 4 4-4"/><path d="M2 13h12"/>
-    </svg>
-    Exporter en HTML
-  </a>
+  <div class="rapport-actions">
+    <select id="dateSelect" class="date-select" aria-label="Choisir une journée"></select>
+    <a id="exportBtn" href="/rapport/export" class="btn btn-secondary">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 2v9M4 7l4 4 4-4"/><path d="M2 13h12"/>
+      </svg>
+      Exporter en HTML
+    </a>
+  </div>
 </div>
 
 <!-- Stat cards -->
@@ -67,21 +70,59 @@
 
 {% block scripts %}
 <script>
-  // ── Chargement du rapport ────────────────────────
-  async function chargerRapport() {
+  let resolusSet = new Set();  // signatures des erreurs résolues (marquées côté scan)
+
+  // ── Sélecteur de date ────────────────────────────
+  async function initDates() {
+    let dates = [];
     try {
-      // Deux appels parallèles — aujourd'hui + hier (pour les deltas)
-      const [resActuel, resPrev] = await Promise.all([
-        fetch('/rapport/'),
-        fetch('/rapport/hier')
+      const res = await fetch('/rapport/dates');
+      dates = (await res.json()).dates || [];
+    } catch { /* backend down — on retombe sur aujourd'hui */ }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (!dates.includes(today)) dates.unshift(today); // aujourd'hui toujours proposé
+
+    const select = document.getElementById('dateSelect');
+    select.innerHTML = dates.map(d => `<option value="${d}">${labelDate(d)}</option>`).join('');
+    select.value = today;
+    select.addEventListener('change', () => chargerRapport(select.value));
+
+    chargerRapport(today);
+  }
+
+  // ── Chargement du rapport ────────────────────────
+  async function chargerRapport(jour) {
+    document.getElementById('exportBtn').href = `/rapport/export?date=${jour}`;
+    try {
+      // Deux appels parallèles — jour choisi + veille (pour les deltas)
+      const [resActuel, resPrev, resR] = await Promise.all([
+        fetch(`/rapport/?date=${jour}`),
+        fetch(`/rapport/?date=${jourPrecedent(jour)}`),
+        fetch('/resolutions/')
       ]);
       if (!resActuel.ok) throw new Error('Erreur serveur');
       const data = await resActuel.json();
       const prev = resPrev.ok ? await resPrev.json() : null;
+      resolusSet = resR.ok ? new Set((await resR.json()).resolues) : new Set();
       renderRapport(data, prev);
     } catch (err) {
       document.getElementById('rapportSubtitle').textContent = 'Impossible de charger le rapport.';
     }
+  }
+
+  function jourPrecedent(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function labelDate(iso) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (iso === today)               return "Aujourd'hui";
+    if (iso === jourPrecedent(today)) return "Hier";
+    return new Date(iso + 'T00:00:00')
+      .toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   function renderRapport(data, prev) {
@@ -105,10 +146,22 @@
       afficherDelta('deltaCours',          data.stats.cours_a_relire,     prev.stats.cours_a_relire,     false);
     }
 
-    // Erreurs
-    if (!data.erreurs.length) return;
+    // Erreurs — on réinitialise à chaque changement de date
+    const errorList = document.getElementById('errorList');
+    if (!data.erreurs.length) {
+      errorList.innerHTML = `
+        <div class="empty-state">
+          <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="24" cy="24" r="20"/>
+            <path d="M24 16v8M24 32h.01"/>
+          </svg>
+          <p class="empty-state-title">Aucune analyse ce jour-là</p>
+          <p class="empty-state-text">Aucun scan n'a été enregistré pour cette date</p>
+        </div>`;
+      return;
+    }
 
-    document.getElementById('errorList').innerHTML = data.erreurs.map(e => renderErreur(e)).join('');
+    errorList.innerHTML = data.erreurs.map(e => renderErreur(e)).join('');
   }
 
   // ── Delta ─────────────────────────────────────────
@@ -128,6 +181,18 @@
   }
 
   function renderErreur(e) {
+    // Erreur déjà marquée résolue (côté scan) → carte compacte « résolu »
+    if (resolusSet.has(e.signature)) {
+      return `
+        <div class="error-card resolu">
+          <div class="error-card-header">
+            <span class="badge badge-resolu">✓ RÉSOLU</span>
+            <span class="error-title resolu-title">${escapeHtml(e.titre)}</span>
+            <span class="error-location-badge">${escapeHtml(e.fichier)}:${e.ligne}</span>
+          </div>
+        </div>`;
+    }
+
     const isCritique = e.niveau === 'critique';
     const badgeClass = isCritique ? 'badge-critique' : 'badge-warning';
     const badgeLabel = isCritique ? 'CRITIQUE' : 'AVERTISSEMENT';
@@ -167,6 +232,6 @@
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  chargerRapport();
+  initDates();
 </script>
 {% endblock %}

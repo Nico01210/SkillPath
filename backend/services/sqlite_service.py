@@ -38,6 +38,14 @@ def init_db():
             created_at  TEXT NOT NULL
         )
     """)
+    # Erreurs marquées « résolues » par l'utilisateur, identifiées par la
+    # signature stable de l'erreur (voir Erreur.signature).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS resolutions (
+            signature   TEXT PRIMARY KEY,
+            resolved_at TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
 
@@ -66,44 +74,16 @@ def sauvegarder_analyse(fichier: str, erreurs: list[Erreur]):
     conn.commit()
 
 
-def get_analyses_du_jour() -> list[dict]:
+def get_analyses_par_date(jour: date) -> list[dict]:
     """
-    Retourne toutes les analyses d'aujourd'hui.
-    Utilisé par rapport_service pour construire le rapport journalier.
+    Retourne toutes les analyses d'une date donnée.
+    Brique de base pour le rapport du jour, d'hier ou de n'importe quelle
+    journée passée (historique).
     """
     conn = get_connexion()
     rows = conn.execute(
         "SELECT * FROM analyses WHERE date = ?",
-        (date.today().isoformat(),)
-    ).fetchall()
-
-    analyses = []
-    for row in rows:
-        analyses.append({
-            "id": row["id"],
-            "fichier": row["fichier"],
-            "erreurs": json.loads(row["erreurs"]),
-            "created_at": row["created_at"]
-        })
-
-    return analyses
-
-
-def compter_analyses_du_jour() -> int:
-    """Retourne le nombre de fichiers analysés aujourd'hui."""
-    conn = get_connexion()
-    count = conn.execute(
-        "SELECT COUNT(*) FROM analyses WHERE date = ?",
-        (date.today().isoformat(),)
-    ).fetchone()[0]
-    return count
-
-def get_analyses_hier() -> list[dict]:
-    """Retourne les analyses du jour précédent."""
-    hier = (date.today() - timedelta(days=1)).isoformat()
-    conn = get_connexion()
-    rows = conn.execute(
-        "SELECT * FROM analyses WHERE date = ?", (hier,)
+        (jour.isoformat(),)
     ).fetchall()
 
     return [
@@ -115,3 +95,46 @@ def get_analyses_hier() -> list[dict]:
         }
         for row in rows
     ]
+
+
+def get_resolutions() -> list[str]:
+    """Retourne les signatures des erreurs marquées comme résolues."""
+    conn = get_connexion()
+    rows = conn.execute("SELECT signature FROM resolutions").fetchall()
+    return [row["signature"] for row in rows]
+
+
+def marquer_resolue(signature: str) -> None:
+    """Marque une erreur (par sa signature) comme résolue. Idempotent."""
+    conn = get_connexion()
+    conn.execute(
+        "INSERT OR IGNORE INTO resolutions (signature, resolved_at) VALUES (?, ?)",
+        (signature, datetime.now().isoformat())
+    )
+    conn.commit()
+
+
+def rouvrir_erreur(signature: str) -> None:
+    """Annule la résolution d'une erreur. Idempotent."""
+    conn = get_connexion()
+    conn.execute("DELETE FROM resolutions WHERE signature = ?", (signature,))
+    conn.commit()
+
+
+def get_dates_analysees() -> list[str]:
+    """Retourne la liste des dates ayant au moins une analyse (plus récentes d'abord)."""
+    conn = get_connexion()
+    rows = conn.execute(
+        "SELECT DISTINCT date FROM analyses ORDER BY date DESC"
+    ).fetchall()
+    return [row["date"] for row in rows]
+
+
+def get_analyses_du_jour() -> list[dict]:
+    """Analyses d'aujourd'hui — raccourci sur get_analyses_par_date."""
+    return get_analyses_par_date(date.today())
+
+
+def get_analyses_hier() -> list[dict]:
+    """Analyses du jour précédent — raccourci sur get_analyses_par_date."""
+    return get_analyses_par_date(date.today() - timedelta(days=1))

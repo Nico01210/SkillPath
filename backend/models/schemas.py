@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import hashlib
+from pydantic import BaseModel, computed_field
 from datetime import date
 from typing import Literal
 
@@ -21,13 +22,25 @@ class CoursLie(BaseModel):
     chunk_id: str       # identifiant du morceau dans ChromaDB
 
 class Erreur(BaseModel):
-    niveau: Literal["critique", "avertissement"]  
+    niveau: Literal["critique", "avertissement"]
     titre: str          # ex: "Fonction trop longue"
     fichier: str        # ex: "main.py"
     ligne: int          # numéro de ligne
     description: str    # explication de l'erreur
     extrait: str        # bout de code fautif
     cours: list[CoursLie]  # cours à relire (vient du RAG)
+
+    @computed_field
+    @property
+    def signature(self) -> str:
+        """
+        Identifiant stable d'une erreur, basé sur son contenu (fichier + titre +
+        ligne). Permet de mémoriser qu'une erreur est « résolue » indépendamment
+        de l'analyse dont elle provient : la même erreur re-détectée plus tard
+        garde la même signature.
+        """
+        cle = f"{self.fichier}|{self.titre}|{self.ligne}"
+        return hashlib.sha1(cle.encode("utf-8")).hexdigest()[:16]
 
 # Ce que retourne POST /scan
 class ScanResponse(BaseModel):

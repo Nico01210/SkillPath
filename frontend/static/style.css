@@ -267,6 +267,26 @@ body {
   outline: none;
 }
 
+/* ── Sélecteur de date (rapport) ─────────────────── */
+.rapport-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.date-select {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  cursor: pointer;
+  outline: none;
+}
+.date-select:hover  { background: var(--bg-card-hover); }
+.date-select:focus  { border-color: var(--blue); }
+
 /* ── Modale cours ────────────────────────────────── */
 .cours-modal {
   position: fixed;

@@ -7,16 +7,17 @@ from datetime import date, timedelta
 
  
  
-def get_rapport_du_jour() -> RapportResponse:
+def get_rapport(jour: date) -> RapportResponse:
     """
-    Agrège toutes les analyses SQLite du jour et retourne le rapport structuré.
-    Utilisé par rapport_router pour GET /rapport.
+    Agrège toutes les analyses SQLite d'une date donnée et retourne le rapport
+    structuré. Sert au rapport du jour, d'hier, ou de n'importe quelle journée
+    passée (historique) — GET /rapport?date=AAAA-MM-JJ.
     """
-    analyses = sqlite_service.get_analyses_du_jour()
- 
+    analyses = sqlite_service.get_analyses_par_date(jour)
+
     toutes_erreurs = []
     fichiers_vus = set()
- 
+
     for analyse in analyses:
         fichiers_vus.add(analyse["fichier"])
         for e in analyse["erreurs"]:
@@ -31,52 +32,14 @@ def get_rapport_du_jour() -> RapportResponse:
                 extrait=e["extrait"],
                 cours=cours
             ))
- 
-    # Calcul des stats
+
     critiques = sum(1 for e in toutes_erreurs if e.niveau == "critique")
     avertissements = sum(1 for e in toutes_erreurs if e.niveau == "avertissement")
- 
     # Déduplique les cours recommandés pour compter les cours uniques
-    cours_uniques = set()
-    for e in toutes_erreurs:
-        for c in e.cours:
-            cours_uniques.add(c.chunk_id)
- 
-    return RapportResponse(
-        date=date.today(),
-        stats=StatsRapport(
-            critiques=critiques,
-            avertissements=avertissements,
-            fichiers_analyses=len(fichiers_vus),
-            cours_a_relire=len(cours_uniques)
-        ),
-        erreurs=toutes_erreurs
-    )
- 
- 
-def get_rapport_hier() -> RapportResponse:
-    """
-    Agrège toutes les analyses SQLite d'hier et retourne le rapport structuré.
-    """
-    analyses = sqlite_service.get_analyses_hier()
-    # même logique que get_rapport_du_jour
-    toutes_erreurs = []
-    fichiers_vus = set()
-    for analyse in analyses:
-        fichiers_vus.add(analyse["fichier"])
-        for e in analyse["erreurs"]:
-            cours = [CoursLie(**c) for c in e.get("cours", [])]
-            toutes_erreurs.append(Erreur(
-                niveau=e["niveau"], titre=e["titre"], fichier=e["fichier"],
-                ligne=e["ligne"], description=e["description"],
-                extrait=e["extrait"], cours=cours
-            ))
-    critiques      = sum(1 for e in toutes_erreurs if e.niveau == "critique")
-    avertissements = sum(1 for e in toutes_erreurs if e.niveau == "avertissement")
-    cours_uniques  = {c.chunk_id for e in toutes_erreurs for c in e.cours}
+    cours_uniques = {c.chunk_id for e in toutes_erreurs for c in e.cours}
 
     return RapportResponse(
-        date=date.today() - timedelta(days=1),
+        date=jour,
         stats=StatsRapport(
             critiques=critiques,
             avertissements=avertissements,
@@ -85,6 +48,16 @@ def get_rapport_hier() -> RapportResponse:
         ),
         erreurs=toutes_erreurs
     )
+
+
+def get_rapport_du_jour() -> RapportResponse:
+    """Rapport d'aujourd'hui."""
+    return get_rapport(date.today())
+
+
+def get_rapport_hier() -> RapportResponse:
+    """Rapport du jour précédent."""
+    return get_rapport(date.today() - timedelta(days=1))
 
 
 def generer_html(rapport: RapportResponse) -> str:
@@ -187,12 +160,14 @@ def generer_html(rapport: RapportResponse) -> str:
     return html_content
 
 
-def sauvegarder_html(html_content: str) -> str:
+def sauvegarder_html(html_content: str, jour: date | None = None) -> str:
     """
     Sauvegarde le HTML dans data/reports/ et retourne le chemin du fichier.
+    Le nom de fichier porte la date du rapport (par défaut aujourd'hui).
     """
+    jour = jour or date.today()
     os.makedirs(settings.reports_path, exist_ok=True)
-    chemin = os.path.join(settings.reports_path, f"rapport_{date.today().isoformat()}.html")
+    chemin = os.path.join(settings.reports_path, f"rapport_{jour.isoformat()}.html")
  
     with open(chemin, "w", encoding="utf-8") as f:
         f.write(html_content)

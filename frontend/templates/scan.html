@@ -36,7 +36,7 @@
       <span class="file-result-name" id="resultFileName"></span>
       <span class="file-result-meta" id="resultFileMeta"></span>
     </div>
-    <button class="btn btn-primary btn-sm" id="reanalyseBtn" onclick="lancerScan()">
+    <button class="btn btn-primary btn-sm" id="reanalyseBtn" onclick="onClicActionPrincipale()">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M2 8a6 6 0 1 0 1-3.5"/><polyline points="2 2 2 5.5 5.5 5.5"/>
       </svg>
@@ -73,6 +73,20 @@
   let selectedFile = null;
   let erreursCourantes = [];
   let resolus = new Set();
+  // true seulement quand un vrai fichier vient d'être déposé dans CETTE session —
+  // après un rechargement on n'a plus le File en mémoire, "Ré-analyser" est impossible.
+  let peutReanalyser = false;
+
+  const LAST_SCAN_KEY = 'sp_last_scan';
+
+  const ICON_DEFAULT = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+    </svg>`;
+  const ICON_SUCCES = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>`;
 
   const fileInput = document.getElementById('fileInput');
   const dropZone  = document.getElementById('dropZone');
@@ -90,6 +104,7 @@
 
   function handleFile(f) {
     selectedFile = f;
+    peutReanalyser = true;
     resolus = new Set();
     document.getElementById('stateUpload').classList.add('hidden');
     document.getElementById('stateFile').classList.remove('hidden');
@@ -97,8 +112,35 @@
     document.getElementById('resultFileMeta').textContent = 'Analyse en cours…';
     document.getElementById('statsBar').classList.add('hidden');
     document.getElementById('errorList').innerHTML = '';
+    majBoutonPrincipal();
     hideFeedback();
     lancerScan();
+  }
+
+  // ── Bouton principal contextuel ───────────────────
+  // Fichier en mémoire (session courante) → « Ré-analyser » relance le scan.
+  // Résultat réhydraté depuis le cache (après reload) → « Nouveau scan » repart de la dropzone.
+  function majBoutonPrincipal() {
+    document.getElementById('reanalyseBtnText').textContent = peutReanalyser ? 'Ré-analyser' : 'Nouveau scan';
+  }
+
+  function onClicActionPrincipale() {
+    if (peutReanalyser) { lancerScan(); return; }
+    resetVersDropzone();
+  }
+
+  function resetVersDropzone() {
+    selectedFile = null;
+    erreursCourantes = [];
+    resolus = new Set();
+    peutReanalyser = false;
+    localStorage.removeItem(LAST_SCAN_KEY);
+    fileInput.value = '';
+    document.getElementById('fileResultIcon').innerHTML = ICON_DEFAULT;
+    document.getElementById('fileResultIcon').style.background = '';
+    document.getElementById('stateFile').classList.add('hidden');
+    document.getElementById('stateUpload').classList.remove('hidden');
+    hideFeedback();
   }
 
   // ── Scan ─────────────────────────────────────────
@@ -109,27 +151,34 @@
     resolus = new Set();
     document.getElementById('statsBar').classList.add('hidden');
     document.getElementById('errorList').innerHTML = '';
+    // Reset de l'icône — sinon un ré-analyse qui retrouve des erreurs
+    // garderait le check vert d'un scan précédent sans erreur.
+    document.getElementById('fileResultIcon').innerHTML = ICON_DEFAULT;
+    document.getElementById('fileResultIcon').style.background = '';
 
     const formData = new FormData();
     formData.append('fichier', selectedFile);
     const debut = Date.now();
 
     try {
-      const res = await fetch('/scan/', { method: 'POST', body: formData });
+      // Scan + état des résolutions déjà enregistrées (en parallèle)
+      const [res, resR] = await Promise.all([
+        fetch('/scan/', { method: 'POST', body: formData }),
+        fetch('/resolutions/')
+      ]);
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Erreur serveur'); }
       const data = await res.json();
 
       erreursCourantes = data.erreurs;
+      resolus = resR.ok ? new Set((await resR.json()).resolues) : new Set();
+      sauvegarderCache(data.fichier, data.erreurs);
 
       const duree = Math.round((Date.now() - debut) / 1000);
       document.getElementById('resultFileMeta').textContent =
         `Analyse terminée · analysé il y a ${duree < 60 ? duree + ' sec' : Math.round(duree / 60) + ' min'}`;
 
       if (data.erreurs.length === 0) {
-        document.getElementById('fileResultIcon').innerHTML = `
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>`;
+        document.getElementById('fileResultIcon').innerHTML = ICON_SUCCES;
         document.getElementById('fileResultIcon').style.background = 'var(--green)';
       }
 
@@ -142,13 +191,57 @@
     }
   }
 
+  // ── Cache local du dernier scan ───────────────────
+  // On ne cache QUE le résultat (bon marché, re-dérivable par un nouveau scan) ;
+  // l'état « résolu » lui reste en base et est toujours relu depuis /resolutions.
+  function sauvegarderCache(filename, erreurs) {
+    try {
+      localStorage.setItem(LAST_SCAN_KEY, JSON.stringify({
+        filename, erreurs, scannedAt: new Date().toISOString()
+      }));
+    } catch { /* quota dépassé / navigation privée — non bloquant */ }
+  }
+
+  async function restaurerDernierScan() {
+    let cache;
+    try { cache = JSON.parse(localStorage.getItem(LAST_SCAN_KEY)); } catch { cache = null; }
+    if (!cache || !Array.isArray(cache.erreurs)) return;
+
+    peutReanalyser = false;
+    erreursCourantes = cache.erreurs;
+
+    document.getElementById('stateUpload').classList.add('hidden');
+    document.getElementById('stateFile').classList.remove('hidden');
+    document.getElementById('resultFileName').textContent = cache.filename;
+    document.getElementById('resultFileMeta').textContent = `Dernière analyse ${formatDepuis(cache.scannedAt)}`;
+    document.getElementById('fileResultIcon').innerHTML = cache.erreurs.length === 0 ? ICON_SUCCES : ICON_DEFAULT;
+    document.getElementById('fileResultIcon').style.background = cache.erreurs.length === 0 ? 'var(--green)' : '';
+    majBoutonPrincipal();
+
+    try {
+      const resR = await fetch('/resolutions/');
+      resolus = resR.ok ? new Set((await resR.json()).resolues) : new Set();
+    } catch { resolus = new Set(); }
+
+    renderResultats();
+  }
+
+  function formatDepuis(iso) {
+    const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1)  return "à l'instant";
+    if (min < 60) return `il y a ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24)   return `il y a ${h} h`;
+    return `le ${new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
+  }
+
   // ── Rendu résultats ───────────────────────────────
   function renderResultats() {
     const erreurs        = erreursCourantes;
     const nb             = erreurs.length;
-    const critiques      = erreurs.filter((e, i) => e.niveau === 'critique' && !resolus.has(i)).length;
-    const avertissements = erreurs.filter((e, i) => e.niveau === 'avertissement' && !resolus.has(i)).length;
-    const nbResolus      = resolus.size;
+    const critiques      = erreurs.filter(e => e.niveau === 'critique' && !resolus.has(e.signature)).length;
+    const avertissements = erreurs.filter(e => e.niveau === 'avertissement' && !resolus.has(e.signature)).length;
+    const nbResolus      = erreurs.filter(e => resolus.has(e.signature)).length;
 
     document.getElementById('statsCritiques').textContent      = `${critiques} critique${critiques > 1 ? 's' : ''}`;
     document.getElementById('statsAvertissements').textContent = `${avertissements} avertissement${avertissements > 1 ? 's' : ''}`;
@@ -179,11 +272,11 @@
       return;
     }
 
-    document.getElementById('errorList').innerHTML = erreurs.map((e, i) => renderErreur(e, i)).join('');
+    document.getElementById('errorList').innerHTML = erreurs.map(e => renderErreur(e)).join('');
   }
 
-  function renderErreur(e, index) {
-    const estResolu  = resolus.has(index);
+  function renderErreur(e) {
+    const estResolu  = resolus.has(e.signature);
     const isCritique = e.niveau === 'critique';
     const badgeClass = isCritique ? 'badge-critique' : 'badge-warning';
     const badgeLabel = isCritique ? 'CRITIQUE' : 'AVERTISSEMENT';
@@ -195,7 +288,7 @@
             <span class="badge badge-resolu">✓ RÉSOLU</span>
             <span class="error-title resolu-title">${escapeHtml(e.titre)}</span>
             <span class="error-location-badge">${escapeHtml(e.fichier)}:${e.ligne}</span>
-            <button class="btn-icon" onclick="rouvrir(${index})">
+            <button class="btn-icon" onclick="rouvrir('${e.signature}')">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2 8a6 6 0 1 0 1-3.5"/><polyline points="2 2 2 5.5 5.5 5.5"/>
               </svg>
@@ -234,7 +327,7 @@
           ${coursHTML}
         </div>
         <div class="error-card-footer">
-          <button class="btn-resolu" onclick="marquerResolu(${index})">
+          <button class="btn-resolu" onclick="marquerResolu('${e.signature}')">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 8 6 11 13 4"/>
             </svg>
@@ -244,14 +337,32 @@
       </div>`;
   }
 
-  function marquerResolu(index) {
-    resolus.add(index);
+  // Optimiste : on met à jour l'UI tout de suite, puis on persiste ;
+  // rollback + message si le backend refuse.
+  async function marquerResolu(sig) {
+    resolus.add(sig);
     renderResultats();
+    try {
+      const res = await fetch(`/resolutions/${sig}`, { method: 'PUT' });
+      if (!res.ok) throw new Error();
+    } catch {
+      resolus.delete(sig);
+      renderResultats();
+      showFeedback('error', "Impossible d'enregistrer la résolution.");
+    }
   }
 
-  function rouvrir(index) {
-    resolus.delete(index);
+  async function rouvrir(sig) {
+    resolus.delete(sig);
     renderResultats();
+    try {
+      const res = await fetch(`/resolutions/${sig}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+    } catch {
+      resolus.add(sig);
+      renderResultats();
+      showFeedback('error', "Impossible de rouvrir l'erreur.");
+    }
   }
 
   function setLoading(on) {
@@ -275,5 +386,7 @@
   function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  restaurerDernierScan();
 </script>
 {% endblock %}
