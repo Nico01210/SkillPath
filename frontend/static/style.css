@@ -455,6 +455,37 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Skeleton loader ─────────────────────────────── */
+.skeleton-card {
+  background: var(--bg-card);
+  border: 0.5px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-card-hover) 25%, rgba(255,255,255,0.06) 50%, var(--bg-card-hover) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line + .skeleton-line { margin-top: 10px; }
+
+.skeleton-line.w-30  { width: 30%; }
+.skeleton-line.w-70  { width: 70%; }
+.skeleton-line.w-100 { width: 100%; }
+.skeleton-line.h-header { height: 16px; margin-bottom: 12px; }
+.skeleton-line.h-code   { height: 70px; border-radius: var(--radius-sm); margin-top: 12px; }
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ── Divider ─────────────────────────────────────── */
 .divider { height: 0.5px; background: var(--border); margin: 24px 0; }
 
