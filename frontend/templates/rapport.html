@@ -158,7 +158,16 @@
     // Erreurs — on réinitialise à chaque changement de date
     const errorList = document.getElementById('errorList');
     if (!data.erreurs.length) {
-      errorList.innerHTML = `
+      errorList.innerHTML = data.stats.fichiers_analyses
+        ? `
+        <div class="empty-state">
+          <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 24l10 10L40 12"/>
+          </svg>
+          <p class="empty-state-title">Rien à signaler</p>
+          <p class="empty-state-text">Tous les fichiers scannés ce jour-là sont propres</p>
+        </div>`
+        : `
         <div class="empty-state">
           <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="24" cy="24" r="20"/>
