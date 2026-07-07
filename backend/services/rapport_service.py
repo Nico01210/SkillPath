@@ -1,9 +1,10 @@
 import html
 import os
-from datetime import date
 from backend.services import sqlite_service
 from backend.models.schemas import RapportResponse, StatsRapport, Erreur, CoursLie
 from backend.config import settings
+from datetime import date, timedelta
+
  
  
 def get_rapport_du_jour() -> RapportResponse:
@@ -53,6 +54,39 @@ def get_rapport_du_jour() -> RapportResponse:
     )
  
  
+def get_rapport_hier() -> RapportResponse:
+    """
+    Agrège toutes les analyses SQLite d'hier et retourne le rapport structuré.
+    """
+    analyses = sqlite_service.get_analyses_hier()
+    # même logique que get_rapport_du_jour
+    toutes_erreurs = []
+    fichiers_vus = set()
+    for analyse in analyses:
+        fichiers_vus.add(analyse["fichier"])
+        for e in analyse["erreurs"]:
+            cours = [CoursLie(**c) for c in e.get("cours", [])]
+            toutes_erreurs.append(Erreur(
+                niveau=e["niveau"], titre=e["titre"], fichier=e["fichier"],
+                ligne=e["ligne"], description=e["description"],
+                extrait=e["extrait"], cours=cours
+            ))
+    critiques      = sum(1 for e in toutes_erreurs if e.niveau == "critique")
+    avertissements = sum(1 for e in toutes_erreurs if e.niveau == "avertissement")
+    cours_uniques  = {c.chunk_id for e in toutes_erreurs for c in e.cours}
+
+    return RapportResponse(
+        date=date.today() - timedelta(days=1),
+        stats=StatsRapport(
+            critiques=critiques,
+            avertissements=avertissements,
+            fichiers_analyses=len(fichiers_vus),
+            cours_a_relire=len(cours_uniques)
+        ),
+        erreurs=toutes_erreurs
+    )
+
+
 def generer_html(rapport: RapportResponse) -> str:
     """
     Génère le HTML complet du rapport journalier.
@@ -83,7 +117,7 @@ def generer_html(rapport: RapportResponse) -> str:
             <div class="cours-tags">{cours_tags}</div>
           </div>
         </div>"""
- 
+
     html_content = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>

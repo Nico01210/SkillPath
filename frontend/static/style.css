@@ -213,6 +213,15 @@ body {
 .stat-number.blue   { color: var(--blue); }
 .stat-number.green  { color: var(--green); }
 
+/* Layout chiffre + delta sur même ligne */
+.stat-card-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+ 
+/* Delta +/- */
+.stat-delta { font-size: 12px; font-weight: 500; padding: 2px 6px; border-radius: 4px; }
+.stat-delta.positif { background: rgba(99,153,34,0.15);  color: var(--green); }
+.stat-delta.negatif { background: rgba(226,75,74,0.15);  color: var(--red); }
+.stat-delta.neutre  { color: var(--text-muted); }
+
 /* ── Badges ──────────────────────────────────────── */
 .badge {
   display: inline-flex;

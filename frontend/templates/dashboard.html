@@ -19,18 +19,27 @@
   </div>
 </div>
 
-<!-- 3 stat cards -->
+<!-- 3 stat cards avec deltas -->
 <div class="dashboard-stats mt-24">
   <div class="stat-card">
-    <div class="stat-number blue" id="statTotal">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number blue" id="statTotal">—</div>
+      <span class="stat-delta" id="deltaTotal"></span>
+    </div>
     <div class="stat-label">Total erreurs</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number red" id="statCritiques">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number red" id="statCritiques">—</div>
+      <span class="stat-delta" id="deltaCritiques"></span>
+    </div>
     <div class="stat-label">Erreurs critiques</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number green" id="statFichiers">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number green" id="statFichiers">—</div>
+      <span class="stat-delta" id="deltaFichiers"></span>
+    </div>
     <div class="stat-label">Fichiers analysés</div>
   </div>
 </div>
@@ -79,31 +88,56 @@
 
   async function chargerStats(periode) {
     try {
-      const res = await fetch(`/stats/dashboard?periode=${periode}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-
-      if (data.total_erreurs === 0) {
+      // Deux appels parallèles — actuelle + précédente
+      // Promise.all attend que les deux soient terminés avant de continuer
+      const [resCurrent, resPrev] = await Promise.all([
+        fetch(`/stats/dashboard?periode=${periode}&offset=0`),
+        fetch(`/stats/dashboard?periode=${periode}&offset=1`)
+      ]);
+ 
+      const current = await resCurrent.json();
+      const prev    = await resPrev.json();
+ 
+      if (current.total_erreurs === 0) {
         document.getElementById('emptyState').classList.remove('hidden');
         return;
       }
-
+ 
       document.getElementById('emptyState').classList.add('hidden');
-
-      // Stats cards
-      const critiques      = data.courbe.reduce((s, p) => s + p.critiques, 0);
-      const avertissements = data.courbe.reduce((s, p) => s + p.avertissements, 0);
-      document.getElementById('statTotal').textContent     = data.total_erreurs;
-      document.getElementById('statCritiques').textContent = critiques;
-      document.getElementById('statFichiers').textContent  = data.total_fichiers;
-
-      renderChart(data.courbe);
-      renderRankErreurs(data.erreurs_recurrentes);
-      renderRankCours(data.cours_frequents);
-
+ 
+      const critiques      = current.courbe.reduce((s, p) => s + p.critiques, 0);
+      const prevCritiques  = prev.courbe.reduce((s, p) => s + p.critiques, 0);
+ 
+      // Stat cards avec deltas
+      afficherStat('statTotal',     'deltaTotal',     current.total_erreurs,  prev.total_erreurs,  true);
+      afficherStat('statCritiques', 'deltaCritiques', critiques,              prevCritiques,       true);
+      afficherStat('statFichiers',  'deltaFichiers',  current.total_fichiers, prev.total_fichiers, false);
+ 
+      renderChart(current.courbe);
+      renderRankErreurs(current.erreurs_recurrentes);
+      renderRankCours(current.cours_frequents);
+ 
     } catch {
       document.getElementById('emptyState').classList.remove('hidden');
     }
+  }
+ 
+  // ── Delta ─────────────────────────────────────────
+  function afficherStat(idVal, idDelta, valeur, prevValeur, inverseColor) {
+    document.getElementById(idVal).textContent = valeur;
+ 
+    const deltaEl = document.getElementById(idDelta);
+    if (prevValeur === 0) { deltaEl.textContent = ''; return; }
+ 
+    const diff = valeur - prevValeur;
+    if (diff === 0) { deltaEl.textContent = '='; deltaEl.className = 'stat-delta neutre'; return; }
+ 
+    const signe = diff > 0 ? '+' : '';
+    deltaEl.textContent = `${signe}${diff}`;
+ 
+    // inverseColor=true : +erreurs = rouge (mauvais), -erreurs = vert (bien)
+    const positifEstMauvais = inverseColor ? diff > 0 : diff < 0;
+    deltaEl.className = `stat-delta ${positifEstMauvais ? 'negatif' : 'positif'}`;
   }
 
   function renderChart(courbe) {

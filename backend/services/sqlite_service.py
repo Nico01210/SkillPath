@@ -3,6 +3,7 @@ import json
 from datetime import date, datetime
 from backend.config import settings
 from backend.models.schemas import Erreur
+from datetime import timedelta
 
 _conn = None
 
@@ -89,3 +90,21 @@ def compter_analyses_du_jour() -> int:
         (date.today().isoformat(),)
     ).fetchone()[0]
     return count
+
+def get_analyses_hier() -> list[dict]:
+    """Retourne les analyses du jour précédent."""
+    hier = (date.today() - timedelta(days=1)).isoformat()
+    conn = get_connexion()
+    rows = conn.execute(
+        "SELECT * FROM analyses WHERE date = ?", (hier,)
+    ).fetchall()
+
+    return [
+        {
+            "id": row["id"],
+            "fichier": row["fichier"],
+            "erreurs": json.loads(row["erreurs"]),
+            "created_at": row["created_at"]
+        }
+        for row in rows
+    ]

@@ -20,19 +20,31 @@
 <!-- Stat cards -->
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card">
-    <div class="stat-number red" id="statCritiques">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number red" id="statCritiques">—</div>
+      <span class="stat-delta" id="deltaCritiques"></span>
+    </div>
     <div class="stat-label">Erreurs critiques</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number orange" id="statAvertissements">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number orange" id="statAvertissements">—</div>
+      <span class="stat-delta" id="deltaAvertissements"></span>
+    </div>
     <div class="stat-label">Avertissements</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number blue" id="statFichiers">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number blue" id="statFichiers">—</div>
+      <span class="stat-delta" id="deltaFichiers"></span>
+    </div>
     <div class="stat-label">Fichiers analysés</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number green" id="statCours">—</div>
+    <div class="stat-card-top">
+      <div class="stat-number green" id="statCours">—</div>
+      <span class="stat-delta" id="deltaCours"></span>
+    </div>
     <div class="stat-label">Cours à relire</div>
   </div>
 </div>
@@ -58,16 +70,21 @@
   // ── Chargement du rapport ────────────────────────
   async function chargerRapport() {
     try {
-      const res = await fetch('/rapport/');
-      if (!res.ok) throw new Error('Erreur serveur');
-      const data = await res.json();
-      renderRapport(data);
+      // Deux appels parallèles — aujourd'hui + hier (pour les deltas)
+      const [resActuel, resPrev] = await Promise.all([
+        fetch('/rapport/'),
+        fetch('/rapport/hier')
+      ]);
+      if (!resActuel.ok) throw new Error('Erreur serveur');
+      const data = await resActuel.json();
+      const prev = resPrev.ok ? await resPrev.json() : null;
+      renderRapport(data, prev);
     } catch (err) {
       document.getElementById('rapportSubtitle').textContent = 'Impossible de charger le rapport.';
     }
   }
 
-  function renderRapport(data) {
+  function renderRapport(data, prev) {
     // Subtitle — date lisible
     const date = new Date(data.date);
     const dateStr = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -80,10 +97,34 @@
     document.getElementById('statFichiers').textContent       = data.stats.fichiers_analyses;
     document.getElementById('statCours').textContent          = data.stats.cours_a_relire + ' chap.';
 
+    // Deltas vs hier — RapportResponse.stats est déjà agrégé (pas de courbe à réduire)
+    if (prev) {
+      afficherDelta('deltaCritiques',      data.stats.critiques,          prev.stats.critiques,          true);
+      afficherDelta('deltaAvertissements', data.stats.avertissements,     prev.stats.avertissements,     true);
+      afficherDelta('deltaFichiers',       data.stats.fichiers_analyses,  prev.stats.fichiers_analyses,  false);
+      afficherDelta('deltaCours',          data.stats.cours_a_relire,     prev.stats.cours_a_relire,     false);
+    }
+
     // Erreurs
     if (!data.erreurs.length) return;
 
     document.getElementById('errorList').innerHTML = data.erreurs.map(e => renderErreur(e)).join('');
+  }
+
+  // ── Delta ─────────────────────────────────────────
+  function afficherDelta(idDelta, valeur, prevValeur, inverseColor) {
+    const deltaEl = document.getElementById(idDelta);
+    if (prevValeur === 0) { deltaEl.textContent = ''; return; }
+
+    const diff = valeur - prevValeur;
+    if (diff === 0) { deltaEl.textContent = '='; deltaEl.className = 'stat-delta neutre'; return; }
+
+    const signe = diff > 0 ? '+' : '';
+    deltaEl.textContent = `${signe}${diff}`;
+
+    // inverseColor=true : +erreurs = rouge (mauvais), -erreurs = vert (bien)
+    const positifEstMauvais = inverseColor ? diff > 0 : diff < 0;
+    deltaEl.className = `stat-delta ${positifEstMauvais ? 'negatif' : 'positif'}`;
   }
 
   function renderErreur(e) {

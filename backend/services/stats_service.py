@@ -8,14 +8,15 @@ from backend.models.schemas import (
 )
 
 
-def get_stats(periode: str = "semaine") -> StatsResponse:
+def get_stats(periode: str = "semaine", offset: int = 0) -> StatsResponse:
     """
     Calcule les stats de progression sur 7 ou 30 jours.
     periode = "semaine" → 7 jours
     periode = "mois"    → 30 jours
     """
     nb_jours = 7 if periode == "semaine" else 30
-    date_fin = date.today()
+
+    date_fin   = date.today() - timedelta(days=nb_jours * offset)
     date_debut = date_fin - timedelta(days=nb_jours - 1)
  
     conn = sqlite_service.get_connexion()
