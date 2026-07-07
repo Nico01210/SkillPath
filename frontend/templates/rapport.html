@@ -26,6 +26,8 @@
   </div>
 </div>
 
+<div id="feedback" class="hidden mt-16"></div>
+
 <!-- Stat cards -->
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card">
@@ -100,6 +102,7 @@
   // ── Chargement du rapport ────────────────────────
   async function chargerRapport(jour) {
     document.getElementById('exportBtn').href = `/rapport/export?date=${jour}`;
+    hideFeedback();
     try {
       // Deux appels parallèles — jour choisi + veille (pour les deltas)
       const [resActuel, resPrev, resR] = await Promise.all([
@@ -107,15 +110,28 @@
         fetch(`/rapport/?date=${jourPrecedent(jour)}`),
         fetch('/resolutions/')
       ]);
-      if (!resActuel.ok) throw new Error('Erreur serveur');
+      if (!resActuel.ok) {
+        const err = await resActuel.json().catch(() => ({}));
+        throw new Error(err.detail || 'Erreur serveur');
+      }
       const data = await resActuel.json();
       const prev = resPrev.ok ? await resPrev.json() : null;
       resolusSet = resR.ok ? new Set((await resR.json()).resolues) : new Set();
       renderRapport(data, prev);
     } catch (err) {
       document.getElementById('rapportSubtitle').textContent = 'Impossible de charger le rapport.';
+      showFeedback('error', `Erreur : ${err.message}`);
     }
   }
+
+  function showFeedback(type, msg) {
+    const el = document.getElementById('feedback');
+    el.className = `alert alert-${type === 'success' ? 'success' : 'error'} mt-16`;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function hideFeedback() { document.getElementById('feedback').classList.add('hidden'); }
 
   function jourPrecedent(iso) {
     const d = new Date(iso + 'T00:00:00');

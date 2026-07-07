@@ -19,6 +19,8 @@
   </div>
 </div>
 
+<div id="feedback" class="hidden mt-16"></div>
+
 <!-- 3 stat cards avec deltas -->
 <div class="dashboard-stats mt-24">
   <div class="stat-card">
@@ -87,6 +89,8 @@
   let chart = null;
 
   async function chargerStats(periode) {
+    hideFeedback();
+    document.getElementById('emptyState').classList.add('hidden');
     try {
       // Deux appels parallèles — actuelle + précédente
       // Promise.all attend que les deux soient terminés avant de continuer
@@ -94,33 +98,45 @@
         fetch(`/stats/dashboard?periode=${periode}&offset=0`),
         fetch(`/stats/dashboard?periode=${periode}&offset=1`)
       ]);
- 
+
+      if (!resCurrent.ok) {
+        const err = await resCurrent.json().catch(() => ({}));
+        throw new Error(err.detail || 'Erreur serveur');
+      }
+
       const current = await resCurrent.json();
-      const prev    = await resPrev.json();
- 
+      const prev    = resPrev.ok ? await resPrev.json() : { total_erreurs: 0, total_fichiers: 0, courbe: [] };
+
       if (current.total_erreurs === 0) {
         document.getElementById('emptyState').classList.remove('hidden');
         return;
       }
- 
-      document.getElementById('emptyState').classList.add('hidden');
- 
+
       const critiques      = current.courbe.reduce((s, p) => s + p.critiques, 0);
       const prevCritiques  = prev.courbe.reduce((s, p) => s + p.critiques, 0);
- 
+
       // Stat cards avec deltas
       afficherStat('statTotal',     'deltaTotal',     current.total_erreurs,  prev.total_erreurs,  true);
       afficherStat('statCritiques', 'deltaCritiques', critiques,              prevCritiques,       true);
       afficherStat('statFichiers',  'deltaFichiers',  current.total_fichiers, prev.total_fichiers, false);
- 
+
       renderChart(current.courbe);
       renderRankErreurs(current.erreurs_recurrentes);
       renderRankCours(current.cours_frequents);
- 
-    } catch {
-      document.getElementById('emptyState').classList.remove('hidden');
+
+    } catch (err) {
+      showFeedback('error', `Erreur : ${err.message}`);
     }
   }
+
+  function showFeedback(type, msg) {
+    const el = document.getElementById('feedback');
+    el.className = `alert alert-${type === 'success' ? 'success' : 'error'} mt-16`;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function hideFeedback() { document.getElementById('feedback').classList.add('hidden'); }
  
   // ── Delta ─────────────────────────────────────────
   function afficherStat(idVal, idDelta, valeur, prevValeur, inverseColor) {
