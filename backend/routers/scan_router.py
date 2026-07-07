@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ScanResponse, Erreur, CoursLie
 from backend.services import llm_service, sqlite_service
+from backend.services.upload_utils import read_upload_limited, MAX_CODE_BYTES
 import logging
 
 
@@ -20,14 +21,17 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
     """
  
     # Vérification de l'extension
-    extension = "." + fichier.filename.split(".")[-1]
+    nom = fichier.filename or ""
+    extension = "." + nom.rsplit(".", 1)[-1].lower() if "." in nom else ""
     if extension not in EXTENSIONS_ACCEPTEES:
         liste = ", ".join(sorted(EXTENSIONS_ACCEPTEES))
         raise HTTPException(status_code=400, detail=f"Extension non supportée. Acceptées : {liste}")
 
+    # Lecture bornée — hors du try pour que la 413 ne devienne pas une 500.
+    contenu_bytes = await read_upload_limited(fichier, MAX_CODE_BYTES)
+
     try:
-        # Lit le contenu du fichier en texte
-        contenu_bytes = await fichier.read()
+        # Décode le contenu du fichier en texte
         contenu = contenu_bytes.decode("utf-8")
  
         # Analyse via LLM (mock ou OpenAI) + enrichissement RAG

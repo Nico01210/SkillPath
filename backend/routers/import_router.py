@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from backend.models.schemas import ImportResponse
 from backend.services import pdf_service, chroma_service
+from backend.services.upload_utils import read_upload_limited, MAX_PDF_BYTES
 from backend.config import settings
 
 log = logging.getLogger(__name__)
@@ -26,13 +27,14 @@ async def importer_pdf(fichier: UploadFile = File(...)):
     File(...)  : le "..." signifie que le champ est obligatoire.
     """
 
-    if not fichier.filename.endswith(".pdf"):
+    if not (fichier.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Le fichier doit être un PDF")
 
+    # 1. Lit le contenu (borné) — hors du try pour que la 413 ne soit pas
+    #    ré-emballée en 500 par le except Exception ci-dessous.
+    contenu = await read_upload_limited(fichier, MAX_PDF_BYTES)
+
     try:
-        # 1. Lit le contenu brut du fichier uploadé
-        contenu = await fichier.read()
- 
         # 2. Sauvegarde une copie du PDF dans uploads/
         os.makedirs(settings.uploads_path, exist_ok=True)
         chemin_sauvegarde = os.path.join(settings.uploads_path, _safe_filename(fichier.filename))
