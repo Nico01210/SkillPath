@@ -8,6 +8,12 @@
   <div>
     <h1 class="page-title">Rapport du jour</h1>
     <p class="page-subtitle" id="rapportSubtitle">Chargement…</p>
+    <div class="rapport-progress hidden" id="rapportProgress">
+      <div class="rapport-progress-track">
+        <div class="rapport-progress-bar" id="rapportProgressBar"></div>
+      </div>
+      <span class="rapport-progress-label" id="rapportProgressLabel"></span>
+    </div>
   </div>
   <div class="rapport-actions">
     <select id="dateSelect" class="date-select" aria-label="Choisir une journée"></select>
@@ -146,6 +152,9 @@
       afficherDelta('deltaCours',          data.stats.cours_a_relire,     prev.stats.cours_a_relire,     false);
     }
 
+    // Compteur de progression — X/Y erreurs résolues
+    afficherProgression(data.erreurs);
+
     // Erreurs — on réinitialise à chaque changement de date
     const errorList = document.getElementById('errorList');
     if (!data.erreurs.length) {
@@ -178,6 +187,24 @@
     // inverseColor=true : +erreurs = rouge (mauvais), -erreurs = vert (bien)
     const positifEstMauvais = inverseColor ? diff > 0 : diff < 0;
     deltaEl.className = `stat-delta ${positifEstMauvais ? 'negatif' : 'positif'}`;
+  }
+
+  // ── Compteur de progression ────────────────────────
+  function afficherProgression(erreurs) {
+    const progress = document.getElementById('rapportProgress');
+    if (!erreurs.length) { progress.classList.add('hidden'); return; }
+
+    // Une même erreur peut être détectée plusieurs fois dans la journée (re-scans
+    // du même fichier) et partage alors la même signature : on compte les erreurs
+    // distinctes, pas les occurrences, pour ne pas faire bondir le compteur.
+    const signatures = new Set(erreurs.map(e => e.signature));
+    const total = signatures.size;
+    const resolues = [...signatures].filter(sig => resolusSet.has(sig)).length;
+    const pct = Math.round((resolues / total) * 100);
+
+    document.getElementById('rapportProgressBar').style.width = `${pct}%`;
+    document.getElementById('rapportProgressLabel').textContent = `${resolues}/${total} erreurs résolues`;
+    progress.classList.remove('hidden');
   }
 
   function renderErreur(e) {

@@ -65,6 +65,16 @@ def generer_html(rapport: RapportResponse) -> str:
     Génère le HTML complet du rapport journalier.
     Retourne une chaîne HTML prête à être sauvegardée ou envoyée.
     """
+    # Compteur de progression — X/Y erreurs résolues
+    # Une même erreur peut être détectée plusieurs fois dans la journée (re-scans
+    # du même fichier) et partage alors la même signature : on compte les erreurs
+    # distinctes, pas les occurrences, pour ne pas faire bondir le compteur.
+    resolutions = set(sqlite_service.get_resolutions())
+    signatures = {e.signature for e in rapport.erreurs}
+    total_erreurs = len(signatures)
+    erreurs_resolues = len(signatures & resolutions)
+    pct_resolues = round((erreurs_resolues / total_erreurs) * 100) if total_erreurs else 0
+
     # Génère les cartes d'erreurs
     cartes_html = ""
     for e in rapport.erreurs:
@@ -106,6 +116,10 @@ def generer_html(rapport: RapportResponse) -> str:
               border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 1.5rem; }}
     h1 {{ font-size: 1.25rem; font-weight: 600; }}
     .subtitle {{ font-size: .875rem; color: #6b7280; margin-top: 4px; }}
+    .progress {{ display: flex; align-items: center; gap: 10px; margin-top: 10px; max-width: 260px; }}
+    .progress-track {{ flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }}
+    .progress-bar {{ height: 100%; background: #16a34a; border-radius: 2px; }}
+    .progress-label {{ font-size: .75rem; font-weight: 500; color: #6b7280; white-space: nowrap; }}
     .stats {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem; }}
     .stat {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
              padding: .875rem; text-align: center; }}
@@ -140,6 +154,10 @@ def generer_html(rapport: RapportResponse) -> str:
       <div>
         <h1>SkillPath — Rapport du {rapport.date}</h1>
         <p class="subtitle">{rapport.stats.fichiers_analyses} fichier(s) analysé(s) · {len(rapport.erreurs)} erreur(s) détectée(s)</p>
+        {f'''<div class="progress">
+          <div class="progress-track"><div class="progress-bar" style="width:{pct_resolues}%"></div></div>
+          <span class="progress-label">{erreurs_resolues}/{total_erreurs} erreurs résolues</span>
+        </div>''' if total_erreurs else ''}
       </div>
     </header>
  
