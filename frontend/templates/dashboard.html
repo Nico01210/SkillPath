@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Ma progression{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<div class="dashboard-header">
+  <div>
+    <h1 class="page-title">Ma progression</h1>
+    <p class="page-subtitle">Évolution de tes erreurs dans le temps</p>
+  </div>
+  <div class="periode-toggle">
+    <button class="toggle-btn active" id="btnSemaine" onclick="changerPeriode('semaine')">Semaine</button>
+    <button class="toggle-btn" id="btnMois" onclick="changerPeriode('mois')">Mois</button>
+  </div>
+</div>
+
+<!-- 3 stat cards -->
+<div class="dashboard-stats mt-24">
+  <div class="stat-card">
+    <div class="stat-number blue" id="statTotal">—</div>
+    <div class="stat-label">Total erreurs</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number red" id="statCritiques">—</div>
+    <div class="stat-label">Erreurs critiques</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number green" id="statFichiers">—</div>
+    <div class="stat-label">Fichiers analysés</div>
+  </div>
+</div>
+
+<!-- Graphe -->
+<div class="chart-card mt-24">
+  <div class="chart-card-header">
+    <span class="chart-title">Erreurs par jour</span>
+    <div class="chart-legend">
+      <span class="legend-dot red"></span><span class="legend-label">Critiques</span>
+      <span class="legend-dot orange"></span><span class="legend-label">Avertissements</span>
+    </div>
+  </div>
+  <canvas id="erreurChart"></canvas>
+</div>
+
+<!-- Top 3 erreurs + Top 3 cours -->
+<div class="dashboard-grid mt-24">
+
+  <div class="rank-card">
+    <p class="rank-card-title">Top 3 erreurs récurrentes</p>
+    <div id="topErreurs"></div>
+  </div>
+
+  <div class="rank-card">
+    <p class="rank-card-title">Top 3 cours recommandés</p>
+    <div id="topCours"></div>
+  </div>
+
+</div>
+
+<div id="emptyState" class="empty-state hidden mt-24">
+  <svg class="empty-state-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 36l10-10 8 8 12-16 14 18"/>
+  </svg>
+  <p class="empty-state-title">Aucune donnée sur cette période</p>
+  <p class="empty-state-text">Lance des scans pour voir ta progression apparaître ici</p>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  let chart = null;
+
+  async function chargerStats(periode) {
+    try {
+      const res = await fetch(`/stats/dashboard?periode=${periode}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+
+      if (data.total_erreurs === 0) {
+        document.getElementById('emptyState').classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('emptyState').classList.add('hidden');
+
+      // Stats cards
+      const critiques      = data.courbe.reduce((s, p) => s + p.critiques, 0);
+      const avertissements = data.courbe.reduce((s, p) => s + p.avertissements, 0);
+      document.getElementById('statTotal').textContent     = data.total_erreurs;
+      document.getElementById('statCritiques').textContent = critiques;
+      document.getElementById('statFichiers').textContent  = data.total_fichiers;
+
+      renderChart(data.courbe);
+      renderRankErreurs(data.erreurs_recurrentes);
+      renderRankCours(data.cours_frequents);
+
+    } catch {
+      document.getElementById('emptyState').classList.remove('hidden');
+    }
+  }
+
+  function renderChart(courbe) {
+    const labels         = courbe.map(p => formatDate(p.date));
+    const critiques      = courbe.map(p => p.critiques);
+    const avertissements = courbe.map(p => p.avertissements);
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(document.getElementById('erreurChart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Critiques',
+            data: critiques,
+            borderColor: '#E24B4A',
+            backgroundColor: 'rgba(226, 75, 74, 0.15)',
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointStyle: 'circle',
+            pointBackgroundColor: '#E24B4A',
+            tension: 0.3,
+          },
+          {
+            label: 'Avertissements',
+            data: avertissements,
+            borderColor: '#EF9F27',
+            backgroundColor: 'rgba(239, 159, 39, 0.15)',
+            fill: true,
+            borderWidth: 2,
+            borderDash: [6, 4],
+            pointRadius: 4,
+            pointStyle: 'rectRot',
+            pointBackgroundColor: '#EF9F27',
+            tension: 0.3,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            ticks: { color: '#6B7280', font: { family: 'Inter', size: 11 } },
+            grid:  { color: 'rgba(55, 65, 81, 0.3)' }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: '#6B7280', font: { family: 'Inter', size: 11 }, stepSize: 1 },
+            grid:  { color: 'rgba(55, 65, 81, 0.3)' }
+          }
+        }
+      }
+    });
+  }
+
+  function renderRankErreurs(items) {
+    const container = document.getElementById('topErreurs');
+    if (!items.length) { container.innerHTML = `<p class="text-muted text-sm">Aucune donnée</p>`; return; }
+
+    // max pour calculer le ratio de la barre
+    const max = items[0].occurrences;
+
+    container.innerHTML = items.map((item, i) => `
+      <div class="rank-item">
+        <span class="rank-number">${i + 1}</span>
+        <div class="rank-item-content">
+          <div class="rank-item-top">
+            <span class="rank-title">
+              ${item.niveau === 'critique'
+                ? '<span class="rank-badge-critique">Critique</span>'
+                : '<span class="rank-badge-avertissement">Avertissement</span>'}
+              ${item.titre}
+            </span>
+            <span class="rank-badge ${item.niveau === 'critique' ? 'rank-badge-critique-count' : 'rank-badge-erreur'}">${item.occurrences}×</span>
+          </div>
+          <div class="rank-bar-track">
+            <div class="rank-bar ${item.niveau === 'critique' ? 'rank-bar-critique' : 'rank-bar-erreur'}" style="width:${Math.round(item.occurrences / max * 100)}%"></div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderRankCours(items) {
+    const container = document.getElementById('topCours');
+    if (!items.length) { container.innerHTML = `<p class="text-muted text-sm">Aucune donnée</p>`; return; }
+
+    const max = items[0].recommandations;
+
+    container.innerHTML = items.map((item, i) => `
+      <div class="rank-item">
+        <span class="rank-number">${i + 1}</span>
+        <div class="rank-item-content">
+          <div class="rank-item-top">
+            <span class="rank-title">${item.titre}</span>
+            <span class="rank-badge rank-badge-cours">${item.recommandations} reco</span>
+          </div>
+          <div class="rank-bar-track">
+            <div class="rank-bar rank-bar-cours" style="width:${Math.round(item.recommandations / max * 100)}%"></div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function changerPeriode(periode) {
+    document.getElementById('btnSemaine').classList.toggle('active', periode === 'semaine');
+    document.getElementById('btnMois').classList.toggle('active', periode === 'mois');
+    chargerStats(periode);
+  }
+
+  function formatDate(iso) {
+    return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  }
+
+  chargerStats('semaine');
+</script>
+{% endblock %}

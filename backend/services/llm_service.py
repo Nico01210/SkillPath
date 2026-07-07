@@ -48,7 +48,7 @@ def _mock_analyser(contenu: str, filename: str) -> list[Erreur]:
     Enrichit quand même via RAG pour tester le pipeline complet.
     """
     erreurs_brutes = [
-        {
+                {
             "niveau": "critique",
             "titre": "Fonction trop longue",
             "ligne": 12,

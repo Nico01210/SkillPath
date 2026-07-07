@@ -50,9 +50,23 @@ def get_stats(periode: str = "semaine") -> StatsResponse:
     # ── Top 3 erreurs récurrentes ─────────────────────────
     # Counter compte les occurrences de chaque titre d'erreur
     compteur_erreurs = Counter(e["titre"] for e in toutes_erreurs)
+
+    # Si un titre a déjà été vu en "critique", il reste "critique"
+    niveau_par_titre = {}
+    for e in toutes_erreurs:
+        if niveau_par_titre.get(e["titre"]) != "critique":
+            niveau_par_titre[e["titre"]] = e["niveau"]
+
+    # Les erreurs critiques passent toujours avant les avertissements,
+    # peu importe le nombre d'occurrences ; à gravité égale, par fréquence
+    classement = sorted(
+        compteur_erreurs.items(),
+        key=lambda item: (niveau_par_titre[item[0]] != "critique", -item[1])
+    )
+
     erreurs_recurrentes = [
-        ErreurRecurrente(titre=titre, occurrences=count)
-        for titre, count in compteur_erreurs.most_common(3)
+        ErreurRecurrente(titre=titre, occurrences=count, niveau=niveau_par_titre[titre])
+        for titre, count in classement[:3]
     ]
  
     # ── Top 3 cours les plus recommandés ─────────────────

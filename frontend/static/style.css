@@ -529,6 +529,144 @@ body {
 /* Footer card — bouton résolu */
 .error-card-footer { border-top: 0.5px solid var(--border); padding-top: 12px; margin-top: 12px; }
 
+/* ── Dashboard ───────────────────────────────────── */
+.dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+ 
+/* 3 stat cards en ligne */
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+ 
+.periode-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  flex-shrink: 0;
+}
+ 
+.toggle-btn {
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+ 
+.toggle-btn.active             { background: var(--blue); color: #fff; }
+.toggle-btn:not(.active):hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+ 
+.chart-card {
+  background: var(--bg-card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+ 
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+ 
+.chart-title  { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.chart-legend { display: flex; align-items: center; gap: 12px; }
+ 
+.legend-dot        { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-dot.red    { background: var(--red); }
+.legend-dot.orange { background: var(--orange); }
+.legend-label      { font-size: 12px; color: var(--text-muted); }
+ 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+ 
+.rank-card {
+  background: var(--bg-card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+ 
+.rank-card-title { font-size: 14px; font-weight: 500; color: var(--text-primary); margin-bottom: 16px; }
+ 
+.rank-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+ 
+.rank-item:last-child { border-bottom: none; }
+ 
+.rank-number { font-size: 13px; color: var(--text-muted); width: 14px; flex-shrink: 0; }
+.rank-title  { font-size: 13px; color: var(--text-primary); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+ 
+/* Contenu à droite du numéro */
+.rank-item-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.rank-item-top     { display: flex; align-items: center; gap: 8px; }
+ 
+/* Barre de progression */
+.rank-bar-track {
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+ 
+.rank-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+ 
+.rank-bar-erreur   { background: var(--orange); }
+.rank-bar-cours    { background: var(--blue); }
+.rank-bar-critique { background: var(--red); }
+ 
+.rank-badge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+}
+ 
+.rank-badge-erreur        { background: rgba(239, 159, 39, 0.15); color: var(--orange); }
+.rank-badge-cours         { background: rgba(24, 95, 165, 0.15);  color: var(--blue); }
+.rank-badge-critique-count { background: rgba(226, 75, 74, 0.15); color: var(--red); }
+
+.rank-badge-critique, .rank-badge-avertissement {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.rank-badge-critique      { background: rgba(226, 75, 74, 0.15);  color: var(--red); }
+.rank-badge-avertissement { background: rgba(239, 159, 39, 0.15); color: var(--orange); }
+
 /* ── Rapport page ────────────────────────────────── */
 .rapport-header {
   display: flex;

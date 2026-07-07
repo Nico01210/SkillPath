@@ -64,6 +64,7 @@ class PointCourbe(BaseModel):
 class ErreurRecurrente(BaseModel):
     titre: str              # nombre de fois détectée sur la période
     occurrences: int
+    niveau: Literal["critique", "avertissement"]
  
 class CoursFrequent(BaseModel):
     titre: str              # nombre de fois recommandé
