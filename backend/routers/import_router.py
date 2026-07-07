@@ -79,9 +79,9 @@ async def lister_cours():
  
     fichiers = [
         f for f in os.listdir(settings.uploads_path)
-        if f.endswith(".pdf")
+        if f.lower().endswith(".pdf")
     ]
- 
+
     return {
         "total": len(fichiers),
         "cours": sorted(fichiers)
@@ -134,9 +134,9 @@ async def reimporter_tout():
  
     fichiers = [
         f for f in os.listdir(settings.uploads_path)
-        if f.endswith(".pdf")
+        if f.lower().endswith(".pdf")
     ]
- 
+
     if not fichiers:
         raise HTTPException(
             status_code=404,
