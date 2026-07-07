@@ -33,11 +33,11 @@ def trouver_cours_pertinents(description_erreur: str, n: int = 3) -> list[CoursL
     return cours
  
  
-def construire_contexte(descriptions_erreurs: list[str]) -> str:
+def construire_contexte(descriptions_erreurs: list[str], n_par_query: int = 4) -> str:
     """
     Agrège les chunks pertinents pour toutes les erreurs d'un fichier
     en un bloc de texte injecté dans le prompt OpenAI.
- 
+
     Retourne une chaîne formatée comme :
     --- Cours pertinents ---
     [Source: cours_python.pdf — chunk 2]
@@ -46,13 +46,13 @@ def construire_contexte(descriptions_erreurs: list[str]) -> str:
     """
     if chroma_service.compter_chunks() == 0:
         return ""
- 
+
     # Déduplique les chunks — une même règle peut matcher plusieurs erreurs
     chunks_vus = set()
     blocs = []
- 
+
     for description in descriptions_erreurs:
-        resultats = chroma_service.rechercher(description, n_resultats=2)
+        resultats = chroma_service.rechercher(description, n_resultats=n_par_query)
         for r in resultats:
             cid = chroma_service.chunk_id(r["source"], r["chunk_index"])
             if cid not in chunks_vus and r["score"] >= RELEVANCE_THRESHOLD:

@@ -9,9 +9,9 @@ CHUNK_OVERLAP = 50  # mots partagés entre deux chunks consécutifs
                     # évite de couper une explication en plein milieu
  
  
-def extraire_texte(pdf_bytes: bytes) -> str:
+def extraire_texte(pdf_bytes: bytes) -> tuple[str, int]:
     """
-    Lit un PDF depuis ses bytes bruts et retourne tout le texte.
+    Lit un PDF depuis ses bytes bruts et retourne (texte, nombre_de_pages).
     On reçoit des bytes car le fichier vient d'un upload FastAPI.
     """
     # fitz.open avec stream= lit depuis la mémoire, pas depuis un fichier
@@ -65,10 +65,10 @@ def decouper_en_chunks(texte: str, source: str) -> list[dict]:
     return chunks
  
  
-def traiter_pdf(pdf_bytes: bytes, filename: str) -> list[dict]:
+def traiter_pdf(pdf_bytes: bytes, filename: str) -> dict:
     """
     Fonction principale appelée par import_router.
-    Lit le PDF et retourne les chunks prêts pour ChromaDB.
+    Lit le PDF et retourne {"chunks": [...], "pages": int} prêt pour ChromaDB.
     """
     texte, nb_pages = extraire_texte(pdf_bytes)
 

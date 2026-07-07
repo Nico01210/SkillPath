@@ -1,19 +1,26 @@
 import sqlite3
 import json
+import threading
 from datetime import date, datetime
 from backend.config import settings
 from backend.models.schemas import Erreur
 from datetime import timedelta
 
-_conn = None
+# Les endpoints FastAPI synchrones tournent dans un threadpool : partager une
+# seule connexion SQLite entre threads provoque des « database is locked » et des
+# corruptions d'état. On donne donc une connexion propre à chaque thread.
+_local = threading.local()
 
 
 def get_connexion():
-    global _conn
-    if _conn is None:
-        _conn = sqlite3.connect(settings.sqlite_db_path, check_same_thread=False)
-        _conn.row_factory = sqlite3.Row
-    return _conn
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(settings.sqlite_db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        # WAL : lectures et écritures concurrentes ne se bloquent plus mutuellement.
+        conn.execute("PRAGMA journal_mode=WAL")
+        _local.conn = conn
+    return conn
 
 
 def init_db():

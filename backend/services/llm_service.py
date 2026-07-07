@@ -14,20 +14,22 @@ MOCK_MODE = not bool(settings.openai_api_key)
 log.warning("LLM — mode : %s", "MOCK" if MOCK_MODE else "OpenAI")
  
 def _parse_erreurs(texte: str) -> list[dict]:
-    texte = texte.strip()
+    texte = (texte or "").strip()
     # Retire les backticks ```json ... ``` si présents
     if texte.startswith("```"):
         texte = re.sub(r"^```(?:json)?\s*|\s*```$", "", texte, flags=re.MULTILINE).strip()
     try:
         data = json.loads(texte)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        # Une réponse illisible n'est PAS « aucune erreur » : on remonte l'échec
+        # pour que l'utilisateur voie un vrai message au lieu d'un faux « 0 erreur ».
         log.warning("LLM non-JSON: %r", texte[:200])
-        return []
+        raise ValueError("La réponse de l'IA n'est pas un JSON exploitable.") from exc
     if not isinstance(data, list):
-        return []
+        raise ValueError("La réponse de l'IA n'a pas le format attendu (liste).")
     # Valide que chaque erreur a les clés attendues
     champs = {"niveau", "titre", "ligne", "description", "extrait"}
-    return [e for e in data if champs <= e.keys()]
+    return [e for e in data if isinstance(e, dict) and champs <= e.keys()]
  
 def analyser_code(contenu: str, filename: str) -> list[Erreur]:
     """
@@ -75,9 +77,14 @@ def _openai_analyser(contenu: str, filename: str) -> list[Erreur]:
     """
  
     client = OpenAI(api_key=settings.openai_api_key)
- 
+
+    # Récupère les extraits de cours pertinents pour ANCRER l'analyse dans les
+    # cours importés par l'étudiant (RAG). Vide si aucun cours n'est indexé.
+    contexte_cours = rag_service.construire_contexte([contenu])
+
     prompt_systeme = """Tu es un coach de code pour étudiant en reconversion.
 Analyse le code fourni et identifie les erreurs et mauvaises pratiques.
+Si des « Cours pertinents » sont fournis, appuie tes explications dessus.
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.
 Format attendu :
 [
@@ -89,25 +96,34 @@ Format attendu :
     "extrait": "bout de code fautif"
   }
 ]"""
- 
+
+    bloc_cours = f"{contexte_cours}\n\n" if contexte_cours else ""
     prompt_utilisateur = f"""Fichier : {filename}
- 
-Code à analyser :
+
+{bloc_cours}Code à analyser :
 {contenu}"""
- 
+
     reponse = client.chat.completions.create(
         model=settings.openai_model,
         messages=[
             {"role": "system", "content": prompt_systeme},
             {"role": "user", "content": prompt_utilisateur}
         ],
-        max_tokens=1000,
+        max_tokens=2000,
         temperature=0.2  # 0.2 = réponses cohérentes, peu créatives — bon pour l'analyse
     )
- 
-    texte = reponse.choices[0].message.content
-    erreurs_brutes = _parse_erreurs(texte)
- 
+
+    choix = reponse.choices[0]
+    # finish_reason == "length" → le JSON est coupé, donc inexploitable :
+    # mieux vaut un message clair qu'une liste d'erreurs silencieusement tronquée.
+    if choix.finish_reason == "length":
+        raise ValueError(
+            "L'analyse a été tronquée (fichier trop long). "
+            "Découpe le fichier ou réessaie sur une partie plus courte."
+        )
+
+    erreurs_brutes = _parse_erreurs(choix.message.content)
+
     return _enrichir_avec_rag(erreurs_brutes, filename)
  
  

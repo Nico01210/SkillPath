@@ -133,23 +133,23 @@
     const badgeLabel = isCritique ? 'CRITIQUE' : 'AVERTISSEMENT';
 
     const coursHTML = e.cours.length
-      ? e.cours.map(c => `<span class="tag-cours">📖 ${c.titre}</span>`).join('')
+      ? e.cours.map(c => `<span class="tag-cours">📖 ${escapeHtml(c.titre)}</span>`).join('')
       : `<span class="text-muted text-sm">Aucun cours lié</span>`;
 
     return `
       <div class="error-card ${isCritique ? '' : 'warning'}">
         <div class="error-card-header">
           <span class="badge ${badgeClass}">${badgeLabel}</span>
-          <span class="error-title">${e.titre}</span>
-          <span class="error-location-badge">${e.fichier}:${e.ligne}</span>
+          <span class="error-title">${escapeHtml(e.titre)}</span>
+          <span class="error-location-badge">${escapeHtml(e.fichier)}:${e.ligne}</span>
         </div>
-        <p class="error-description">${e.description}</p>
+        <p class="error-description">${escapeHtml(e.description)}</p>
         <div class="code-block">
           <div class="code-block-header">
             <span class="terminal-dot red"></span>
             <span class="terminal-dot orange"></span>
             <span class="terminal-dot green"></span>
-            <span class="code-block-filename">${e.fichier}:${e.ligne}</span>
+            <span class="code-block-filename">${escapeHtml(e.fichier)}:${e.ligne}</span>
           </div>
           <pre class="code-block-content">${escapeHtml(e.extrait)}</pre>
         </div>

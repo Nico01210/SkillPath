@@ -213,7 +213,7 @@
               ${item.niveau === 'critique'
                 ? '<span class="rank-badge-critique">Critique</span>'
                 : '<span class="rank-badge-avertissement">Avertissement</span>'}
-              ${item.titre}
+              ${escapeHtml(item.titre)}
             </span>
             <span class="rank-badge ${item.niveau === 'critique' ? 'rank-badge-critique-count' : 'rank-badge-erreur'}">${item.occurrences}×</span>
           </div>
@@ -236,7 +236,7 @@
         <span class="rank-number">${i + 1}</span>
         <div class="rank-item-content">
           <div class="rank-item-top">
-            <span class="rank-title">${item.titre}</span>
+            <span class="rank-title">${escapeHtml(item.titre)}</span>
             <span class="rank-badge rank-badge-cours">${item.recommandations} reco</span>
           </div>
           <div class="rank-bar-track">
@@ -255,6 +255,10 @@
 
   function formatDate(iso) {
     return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   chargerStats('semaine');

@@ -45,7 +45,11 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
  
     except UnicodeDecodeError:
         raise HTTPException(status_code=422, detail="Le fichier doit être en UTF-8")
- 
+
+    except ValueError as e:
+        # Analyse IA illisible / tronquée — message explicite plutôt qu'un faux « 0 erreur »
+        raise HTTPException(status_code=422, detail=str(e))
+
     except Exception:
         log.exception("scan failed for %s", fichier.filename)
         raise HTTPException(status_code=500, detail="Erreur interne lors de l'analyse")
