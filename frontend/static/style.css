@@ -127,10 +127,20 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 14px 12px;
   margin-top: auto;
+  border: none;
   border-top: 0.5px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  font-family: 'Inter', sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+
+.sidebar-profile:hover { background: rgba(230, 241, 251, 0.08); }
 
 .avatar {
   width: 32px; height: 32px;
@@ -337,6 +347,31 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.profil-modal-box { max-width: 360px; }
+
+/* ── Formulaires (modale profil) ─────────────────── */
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  background: var(--bg-base);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+}
+
+.form-input:focus { outline: none; border-color: var(--blue); }
 
 /* ── Buttons ─────────────────────────────────────── */
 .btn {

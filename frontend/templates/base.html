@@ -63,24 +63,75 @@
       </li>
     </ul>
         <!-- Profil utilisateur -->
-    <div class="sidebar-profile">
+    <button class="sidebar-profile" id="profileTrigger" title="Modifier le profil">
       <div class="avatar" id="userAvatar">NP</div>
       <div class="profile-info">
         <span class="profile-name" id="userName">Nicolas P.</span>
         <span class="profile-role" id="userRole">Reconversion</span>
       </div>
-    </div>
+    </button>
   </aside>
 
+  <!-- ═══ MODALE PROFIL ═══ -->
+  <div id="profilModal" class="cours-modal hidden" role="dialog" aria-modal="true" aria-labelledby="profilModalTitle">
+    <div class="cours-modal-backdrop" data-close></div>
+    <div class="cours-modal-box profil-modal-box">
+      <div class="cours-modal-header">
+        <span class="cours-modal-title" id="profilModalTitle">Modifier le profil</span>
+        <button class="btn-icon" data-close aria-label="Fermer">✕</button>
+      </div>
+      <form class="cours-modal-body" id="profilForm">
+        <label class="form-label" for="profilNameInput">Nom</label>
+        <input class="form-input" id="profilNameInput" type="text" required maxlength="60">
 
-<script>
-      // ── Profil ────────────────────────────────────────
-    const profile = JSON.parse(localStorage.getItem('sp_profile') || 'null');
-    if (profile) {
-      document.getElementById('userName').textContent  = profile.name;
-      document.getElementById('userRole').textContent  = profile.role;
-      document.getElementById('userAvatar').textContent = profile.initials;
+        <label class="form-label" for="profilRoleInput">Métier</label>
+        <input class="form-input" id="profilRoleInput" type="text" required maxlength="60">
+
+        <button class="btn btn-primary mt-16" type="submit">Enregistrer</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ── Profil (mono-user, stocké côté backend en SQLite) ─
+    async function chargerProfil() {
+      try {
+        const res = await fetch('/profil/');
+        const profil = await res.json();
+        appliquerProfil(profil);
+      } catch { /* silencieux si backend down */ }
     }
+
+    function appliquerProfil(profil) {
+      document.getElementById('userName').textContent   = profil.name;
+      document.getElementById('userRole').textContent    = profil.role;
+      document.getElementById('userAvatar').textContent  = profil.initials;
+    }
+
+    document.getElementById('profileTrigger').addEventListener('click', () => {
+      document.getElementById('profilNameInput').value = document.getElementById('userName').textContent;
+      document.getElementById('profilRoleInput').value = document.getElementById('userRole').textContent;
+      document.getElementById('profilModal').classList.remove('hidden');
+    });
+
+    document.getElementById('profilForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = document.getElementById('profilNameInput').value.trim();
+      const role = document.getElementById('profilRoleInput').value.trim();
+      if (!name || !role) return;
+
+      const res = await fetch('/profil/', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, role })
+      });
+      if (res.ok) {
+        appliquerProfil(await res.json());
+        document.getElementById('profilModal').classList.add('hidden');
+      }
+    });
+
+    chargerProfil();
   </script>
   <!-- ═══ MAIN ═══ -->
   <main class="main">
@@ -122,17 +173,19 @@
       }
     }
 
-    function fermerCoursModal() {
-      document.getElementById('coursModal').classList.add('hidden');
+    function fermerModal(modal) {
+      modal.classList.add('hidden');
     }
 
     document.addEventListener('click', e => {
       const tag = e.target.closest('.tag-cours[data-chunk]');
       if (tag) { ouvrirCoursChunk(tag.dataset.chunk, tag.dataset.titre); return; }
-      if (e.target.closest('[data-close]')) fermerCoursModal();
+      const closeTrigger = e.target.closest('[data-close]');
+      if (closeTrigger) fermerModal(closeTrigger.closest('.cours-modal'));
     });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') fermerCoursModal();
+      if (e.key !== 'Escape') return;
+      document.querySelectorAll('.cours-modal:not(.hidden)').forEach(fermerModal);
     });
   </script>
 

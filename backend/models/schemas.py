@@ -49,6 +49,21 @@ class ScanResponse(BaseModel):
     message: str        # ex: "3 erreurs détectées"
 
 
+# ─── PROFIL ───────────────────────────────────────────────
+# Entité unique (mono-utilisateur, pas de table users ni d'auth)
+
+class Profil(BaseModel):
+    name: str
+    role: str
+
+    @computed_field
+    @property
+    def initials(self) -> str:
+        """Initiales depuis le nom, ex: 'Nicolas P.' -> 'NP'."""
+        mots = [m for m in self.name.replace(".", "").split() if m]
+        return "".join(m[0] for m in mots[:2]).upper() or "?"
+
+
 # ─── RAPPORT ──────────────────────────────────────────────
 # Agrégation de toutes les analyses de la journée
 

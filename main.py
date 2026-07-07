@@ -7,7 +7,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 
-from backend.routers import import_router, scan_router, rapport_router, stats_router, resolutions_router
+from backend.routers import import_router, scan_router, rapport_router, stats_router, resolutions_router, profil_router
 from backend.services import sqlite_service
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -38,6 +38,7 @@ app.include_router(scan_router.router, prefix="/scan", tags=["Scan"])
 app.include_router(rapport_router.router, prefix="/rapport", tags=["Rapport"])
 app.include_router(stats_router.router, prefix="/stats", tags=["Stats"])
 app.include_router(resolutions_router.router, prefix="/resolutions", tags=["Résolutions"])
+app.include_router(profil_router.router, prefix="/profil", tags=["Profil"])
 
 @app.get("/health")
 def health():

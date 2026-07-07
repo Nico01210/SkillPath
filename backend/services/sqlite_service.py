@@ -46,6 +46,15 @@ def init_db():
             resolved_at TEXT NOT NULL
         )
     """)
+    # Profil utilisateur — app mono-user, donc une seule ligne (id figé à 1),
+    # pas de table users ni d'auth.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS profil (
+            id      INTEGER PRIMARY KEY CHECK (id = 1),
+            name    TEXT NOT NULL,
+            role    TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
 
@@ -133,6 +142,29 @@ def get_dates_analysees() -> list[str]:
 def get_analyses_du_jour() -> list[dict]:
     """Analyses d'aujourd'hui — raccourci sur get_analyses_par_date."""
     return get_analyses_par_date(date.today())
+
+
+# Valeurs par défaut si l'utilisateur n'a jamais renseigné son profil.
+PROFIL_DEFAUT = {"name": "Nicolas P.", "role": "Reconversion"}
+
+
+def get_profil() -> dict:
+    """Retourne le profil (name, role), ou les valeurs par défaut si absent."""
+    conn = get_connexion()
+    row = conn.execute("SELECT name, role FROM profil WHERE id = 1").fetchone()
+    return {"name": row["name"], "role": row["role"]} if row else dict(PROFIL_DEFAUT)
+
+
+def set_profil(name: str, role: str) -> dict:
+    """Crée ou remplace l'unique ligne de profil (upsert)."""
+    conn = get_connexion()
+    conn.execute(
+        "INSERT INTO profil (id, name, role) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET name = excluded.name, role = excluded.role",
+        (name, role)
+    )
+    conn.commit()
+    return {"name": name, "role": role}
 
 
 def get_analyses_hier() -> list[dict]:

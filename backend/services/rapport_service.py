@@ -75,6 +75,9 @@ def generer_html(rapport: RapportResponse) -> str:
     erreurs_resolues = len(signatures & resolutions)
     pct_resolues = round((erreurs_resolues / total_erreurs) * 100) if total_erreurs else 0
 
+    profil = sqlite_service.get_profil()
+    profil_label = html.escape(f"{profil['name']} — {profil['role']}")
+
     # Génère les cartes d'erreurs
     cartes_html = ""
     for e in rapport.erreurs:
@@ -153,6 +156,7 @@ def generer_html(rapport: RapportResponse) -> str:
     <header>
       <div>
         <h1>SkillPath — Rapport du {rapport.date}</h1>
+        <p class="subtitle">Rapport d'analyse pour {profil_label}</p>
         <p class="subtitle">{rapport.stats.fichiers_analyses} fichier(s) analysé(s) · {len(rapport.erreurs)} erreur(s) détectée(s)</p>
         {f'''<div class="progress">
           <div class="progress-track"><div class="progress-bar" style="width:{pct_resolues}%"></div></div>
