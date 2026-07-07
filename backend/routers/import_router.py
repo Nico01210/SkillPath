@@ -86,6 +86,21 @@ async def lister_cours():
     }
  
  
+@router.get("/chunk")
+async def get_chunk(chunk_id: str):
+    """
+    Retourne le texte d'un chunk de cours à partir de son chunk_id.
+    Alimente la modale « Cours à relire » quand on clique sur un tag.
+    """
+    chunk = chroma_service.get_chunk(chunk_id)
+    if chunk is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Extrait introuvable — le cours a peut-être été supprimé de l'index.",
+        )
+    return chunk
+
+
 @router.delete("/{nom_fichier}")
 async def supprimer_cours(nom_fichier: str):
     """

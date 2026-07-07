@@ -91,6 +91,23 @@ def compter_chunks() -> int:
     return get_collection().count()
 
 
+def get_chunk(chunk_id: str) -> dict | None:
+    """
+    Récupère un chunk par son identifiant (celui produit par chunk_id()).
+    Retourne None si l'id n'existe pas (cours supprimé de l'index, par ex.).
+    Utilisé pour afficher l'extrait de cours quand on clique sur un tag.
+    """
+    res = get_collection().get(ids=[chunk_id], include=["documents", "metadatas"])
+    if not res["ids"]:
+        return None
+    return {
+        "chunk_id": chunk_id,
+        "text": res["documents"][0],
+        "source": res["metadatas"][0]["source"],
+        "chunk_index": res["metadatas"][0]["chunk_index"],
+    }
+
+
 def supprimer_chunks(source: str) -> None:
     """Supprime tous les chunks associés à un fichier source donné."""
     get_collection().delete(where={"source": source})

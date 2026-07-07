@@ -87,6 +87,55 @@
     {% block content %}{% endblock %}
   </main>
 
+  <!-- ═══ MODALE COURS (partagée) ═══ -->
+  <div id="coursModal" class="cours-modal hidden" role="dialog" aria-modal="true" aria-labelledby="coursModalTitle">
+    <div class="cours-modal-backdrop" data-close></div>
+    <div class="cours-modal-box">
+      <div class="cours-modal-header">
+        <span class="cours-modal-title" id="coursModalTitle">Cours</span>
+        <button class="btn-icon" data-close aria-label="Fermer">✕</button>
+      </div>
+      <div class="cours-modal-body" id="coursModalBody"></div>
+    </div>
+  </div>
+
+  <script>
+    // ── Modale « Cours à relire » ─────────────────────
+    // Les tags .tag-cours[data-chunk] sont rendus par les pages ; on écoute
+    // en délégation pour ne pas avoir à recâbler après chaque re-render.
+    async function ouvrirCoursChunk(chunkId, titre) {
+      const modal = document.getElementById('coursModal');
+      const body  = document.getElementById('coursModalBody');
+      document.getElementById('coursModalTitle').textContent = titre || 'Cours';
+      body.textContent = 'Chargement…';
+      modal.classList.remove('hidden');
+      try {
+        const res = await fetch(`/import/chunk?chunk_id=${encodeURIComponent(chunkId)}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Extrait indisponible.');
+        }
+        const data = await res.json();
+        body.textContent = data.text;
+      } catch (e) {
+        body.textContent = e.message || "Impossible de charger cet extrait.";
+      }
+    }
+
+    function fermerCoursModal() {
+      document.getElementById('coursModal').classList.add('hidden');
+    }
+
+    document.addEventListener('click', e => {
+      const tag = e.target.closest('.tag-cours[data-chunk]');
+      if (tag) { ouvrirCoursChunk(tag.dataset.chunk, tag.dataset.titre); return; }
+      if (e.target.closest('[data-close]')) fermerCoursModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') fermerCoursModal();
+    });
+  </script>
+
   {% block scripts %}{% endblock %}
 
 </body>

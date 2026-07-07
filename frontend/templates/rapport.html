@@ -133,7 +133,7 @@
     const badgeLabel = isCritique ? 'CRITIQUE' : 'AVERTISSEMENT';
 
     const coursHTML = e.cours.length
-      ? e.cours.map(c => `<span class="tag-cours">📖 ${escapeHtml(c.titre)}</span>`).join('')
+      ? e.cours.map(c => `<span class="tag-cours" data-chunk="${escapeHtml(c.chunk_id)}" data-titre="${escapeHtml(c.titre)}" role="button" tabindex="0">📖 ${escapeHtml(c.titre)}</span>`).join('')
       : `<span class="text-muted text-sm">Aucun cours lié</span>`;
 
     return `
@@ -164,7 +164,7 @@
   }
 
   function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   chargerRapport();
