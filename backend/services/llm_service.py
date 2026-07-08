@@ -5,6 +5,7 @@ from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionErr
 
 import logging
 import json
+import re
 
 
 log = logging.getLogger(__name__)
@@ -45,14 +46,20 @@ SCHEMA_ERREURS = {
 }
 
 def _parse_erreurs(texte: str) -> list[dict]:
+    texte = (texte or "").strip()
+    # Retire les backticks ```json ... ``` si présents
+    if texte.startswith("```"):
+        texte = re.sub(r"^```(?:json)?\s*|\s*```$", "", texte, flags=re.MULTILINE).strip()
     try:
-        data = json.loads(texte or "")
-    except json.JSONDecodeError as exc:
-        # Une réponse illisible n'est PAS « aucune erreur » : on remonte l'échec
-        # pour que l'utilisateur voie un vrai message au lieu d'un faux « 0 erreur ».
-        log.warning("LLM non-JSON: %r", (texte or "")[:200])
-        raise ValueError("La réponse de l'IA n'est pas un JSON exploitable.") from exc
-    return data.get("erreurs", [])
+        data = json.loads(texte)
+    except json.JSONDecodeError:
+        log.warning("LLM non-JSON: %r", texte[:200])
+        return []
+    if not isinstance(data, list):
+        return []
+    # Valide que chaque erreur a les clés attendues
+    champs = {"niveau", "titre", "ligne", "description", "extrait"}
+    return [e for e in data if champs <= e.keys()]
  
 def analyser_code(contenu: str, filename: str) -> list[Erreur]:
     """
