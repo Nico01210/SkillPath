@@ -1,7 +1,7 @@
 from backend.config import settings
 from backend.models.schemas import Erreur, CoursLie
 from backend.services import rag_service
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionError
 
 import logging
 import re
@@ -103,15 +103,27 @@ Format attendu :
 {bloc_cours}Code à analyser :
 {contenu}"""
 
-    reponse = client.chat.completions.create(
-        model=settings.openai_model,
-        messages=[
-            {"role": "system", "content": prompt_systeme},
-            {"role": "user", "content": prompt_utilisateur}
-        ],
-        max_tokens=2000,
-        temperature=0.2  # 0.2 = réponses cohérentes, peu créatives — bon pour l'analyse
-    )
+    try:
+        reponse = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": prompt_systeme},
+                {"role": "user", "content": prompt_utilisateur}
+            ],
+            max_tokens=2000,
+            temperature=0.2  # 0.2 = réponses cohérentes, peu créatives — bon pour l'analyse
+        )
+    except RateLimitError as exc:
+        # 429 insufficient_quota : billing/quota OpenAI, pas un bug applicatif —
+        # message explicite plutôt qu'une 500 « Erreur interne » trompeuse.
+        raise ValueError(
+            "Quota OpenAI dépassé. Vérifie ton plan et ta facturation sur "
+            "platform.openai.com."
+        ) from exc
+    except AuthenticationError as exc:
+        raise ValueError("Clé API OpenAI invalide ou manquante.") from exc
+    except APIConnectionError as exc:
+        raise ValueError("Impossible de joindre l'API OpenAI. Réessaie plus tard.") from exc
 
     choix = reponse.choices[0]
     # finish_reason == "length" → le JSON est coupé, donc inexploitable :
