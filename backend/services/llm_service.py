@@ -4,32 +4,55 @@ from backend.services import rag_service
 from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionError
 
 import logging
-import re
 import json
 
- 
+
 log = logging.getLogger(__name__)
 
 MOCK_MODE = not bool(settings.openai_api_key)
 log.warning("LLM — mode : %s", "MOCK" if MOCK_MODE else "OpenAI")
- 
+
+# Structured Outputs (response_format json_schema, strict) : l'API contraint la
+# génération token par token pour garantir un JSON syntaxiquement valide ET
+# conforme au schéma. Nécessaire car le modèle, livré à lui-même, casse parfois
+# la syntaxe JSON (ex: guillemets non échappés quand la description cite du
+# code contenant des guillemets, comme allow_origins=["*"]).
+SCHEMA_ERREURS = {
+    "name": "analyse_erreurs",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "erreurs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "niveau": {"type": "string", "enum": ["critique", "avertissement"]},
+                        "titre": {"type": "string"},
+                        "ligne": {"type": "integer"},
+                        "description": {"type": "string"},
+                        "extrait": {"type": "string"},
+                    },
+                    "required": ["niveau", "titre", "ligne", "description", "extrait"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["erreurs"],
+        "additionalProperties": False,
+    },
+}
+
 def _parse_erreurs(texte: str) -> list[dict]:
-    texte = (texte or "").strip()
-    # Retire les backticks ```json ... ``` si présents
-    if texte.startswith("```"):
-        texte = re.sub(r"^```(?:json)?\s*|\s*```$", "", texte, flags=re.MULTILINE).strip()
     try:
-        data = json.loads(texte)
+        data = json.loads(texte or "")
     except json.JSONDecodeError as exc:
         # Une réponse illisible n'est PAS « aucune erreur » : on remonte l'échec
         # pour que l'utilisateur voie un vrai message au lieu d'un faux « 0 erreur ».
-        log.warning("LLM non-JSON: %r", texte[:200])
+        log.warning("LLM non-JSON: %r", (texte or "")[:200])
         raise ValueError("La réponse de l'IA n'est pas un JSON exploitable.") from exc
-    if not isinstance(data, list):
-        raise ValueError("La réponse de l'IA n'a pas le format attendu (liste).")
-    # Valide que chaque erreur a les clés attendues
-    champs = {"niveau", "titre", "ligne", "description", "extrait"}
-    return [e for e in data if isinstance(e, dict) and champs <= e.keys()]
+    return data.get("erreurs", [])
  
 def analyser_code(contenu: str, filename: str) -> list[Erreur]:
     """
@@ -82,20 +105,20 @@ def _openai_analyser(contenu: str, filename: str) -> list[Erreur]:
     # cours importés par l'étudiant (RAG). Vide si aucun cours n'est indexé.
     contexte_cours = rag_service.construire_contexte([contenu])
 
-    prompt_systeme = """Tu es un coach de code pour étudiant en reconversion.
-Analyse le code fourni et identifie les erreurs et mauvaises pratiques.
-Si des « Cours pertinents » sont fournis, appuie tes explications dessus.
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.
-Format attendu :
-[
-  {
-    "niveau": "critique" | "avertissement",
-    "titre": "Titre court de l'erreur",
-    "ligne": 42,
-    "description": "Explication claire pour un étudiant débutant",
-    "extrait": "bout de code fautif"
-  }
-]"""
+    prompt_systeme = """Tu es SkillPath, un coach de code bienveillant pour étudiant en reconversion professionnelle.
+
+Ton rôle : analyser le code fourni et identifier les erreurs et mauvaises pratiques les plus importantes.
+
+Règles strictes :
+- Retourne entre 2 et 6 erreurs maximum — priorise les plus impactantes
+- "critique" = bug potentiel, faille de sécurité, violation grave d'une convention
+- "avertissement" = mauvaise pratique, lisibilité, maintenabilité
+- La description doit expliquer POURQUOI c'est un problème ET comment le corriger, en termes simples
+- L'extrait doit être le code fautif exact (pas le code corrigé)
+- Adapte ton analyse au langage détecté (Python, Java, PHP, JS...)
+- Ignore les erreurs triviales (nommage de variables simples, commentaires manquants)
+
+Réponds au format défini par le schéma JSON fourni."""
 
     bloc_cours = f"{contexte_cours}\n\n" if contexte_cours else ""
     prompt_utilisateur = f"""Fichier : {filename}
@@ -111,7 +134,8 @@ Format attendu :
                 {"role": "user", "content": prompt_utilisateur}
             ],
             max_tokens=2000,
-            temperature=0.2  # 0.2 = réponses cohérentes, peu créatives — bon pour l'analyse
+            temperature=0.2,  # 0.2 = réponses cohérentes, peu créatives — bon pour l'analyse
+            response_format={"type": "json_schema", "json_schema": SCHEMA_ERREURS}
         )
     except RateLimitError as exc:
         # 429 insufficient_quota : billing/quota OpenAI, pas un bug applicatif —

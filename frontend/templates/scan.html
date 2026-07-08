@@ -36,11 +36,11 @@
       <span class="file-result-name" id="resultFileName"></span>
       <span class="file-result-meta" id="resultFileMeta"></span>
     </div>
-    <button class="btn btn-primary btn-sm" id="reanalyseBtn" onclick="onClicActionPrincipale()">
+    <button class="btn btn-primary btn-sm" id="reanalyseBtn" onclick="resetVersDropzone()">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M2 8a6 6 0 1 0 1-3.5"/><polyline points="2 2 2 5.5 5.5 5.5"/>
       </svg>
-      <span id="reanalyseBtnText">Ré-analyser</span>
+      <span id="reanalyseBtnText">Nouveau scan</span>
     </button>
   </div>
 
@@ -72,9 +72,6 @@
   let selectedFile = null;
   let erreursCourantes = [];
   let resolus = new Set();
-  // true seulement quand un vrai fichier vient d'être déposé dans CETTE session —
-  // après un rechargement on n'a plus le File en mémoire, "Ré-analyser" est impossible.
-  let peutReanalyser = false;
 
   const LAST_SCAN_KEY = 'sp_last_scan';
 
@@ -103,7 +100,6 @@
 
   function handleFile(f) {
     selectedFile = f;
-    peutReanalyser = true;
     resolus = new Set();
     document.getElementById('stateUpload').classList.add('hidden');
     document.getElementById('stateFile').classList.remove('hidden');
@@ -111,28 +107,14 @@
     document.getElementById('resultFileMeta').textContent = 'Analyse en cours…';
     document.getElementById('statsBar').classList.add('hidden');
     document.getElementById('errorList').innerHTML = '';
-    majBoutonPrincipal();
     hideFeedback();
     lancerScan();
-  }
-
-  // ── Bouton principal contextuel ───────────────────
-  // Fichier en mémoire (session courante) → « Ré-analyser » relance le scan.
-  // Résultat réhydraté depuis le cache (après reload) → « Nouveau scan » repart de la dropzone.
-  function majBoutonPrincipal() {
-    document.getElementById('reanalyseBtnText').textContent = peutReanalyser ? 'Ré-analyser' : 'Nouveau scan';
-  }
-
-  function onClicActionPrincipale() {
-    if (peutReanalyser) { lancerScan(); return; }
-    resetVersDropzone();
   }
 
   function resetVersDropzone() {
     selectedFile = null;
     erreursCourantes = [];
     resolus = new Set();
-    peutReanalyser = false;
     localStorage.removeItem(LAST_SCAN_KEY);
     fileInput.value = '';
     document.getElementById('fileResultIcon').innerHTML = ICON_DEFAULT;
@@ -218,7 +200,6 @@
     try { cache = JSON.parse(localStorage.getItem(LAST_SCAN_KEY)); } catch { cache = null; }
     if (!cache || !Array.isArray(cache.erreurs)) return;
 
-    peutReanalyser = false;
     erreursCourantes = cache.erreurs;
 
     document.getElementById('stateUpload').classList.add('hidden');
@@ -227,7 +208,6 @@
     document.getElementById('resultFileMeta').textContent = `Dernière analyse ${formatDepuis(cache.scannedAt)}`;
     document.getElementById('fileResultIcon').innerHTML = cache.erreurs.length === 0 ? ICON_SUCCES : ICON_DEFAULT;
     document.getElementById('fileResultIcon').style.background = cache.erreurs.length === 0 ? 'var(--green)' : '';
-    majBoutonPrincipal();
 
     try {
       const resR = await fetch('/resolutions/');
@@ -378,7 +358,7 @@
 
   function setLoading(on) {
     document.getElementById('reanalyseBtn').disabled = on;
-    document.getElementById('reanalyseBtnText').textContent = on ? 'Analyse...' : 'Ré-analyser';
+    document.getElementById('reanalyseBtnText').textContent = on ? 'Analyse...' : 'Nouveau scan';
   }
 
   function showFeedback(type, msg) {
