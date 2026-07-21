@@ -13,7 +13,8 @@ SkillPath est une application web locale mono-utilisateur qui combine l'analyse 
 - **Recommandations RAG** — croise chaque erreur avec tes cours importés et pointe vers les chapitres pertinents
 - **Rapport journalier** — synthèse de toutes les analyses du jour avec export HTML, comparaison avec la veille
 - **Dashboard de progression** — courbe d'évolution sur 7 ou 30 jours, top 3 erreurs récurrentes, top 3 cours recommandés, deltas vs période précédente
-- **Feature "Marquer comme résolue"** — marque une erreur comme résolue directement depuis le scan
+- **Marquer une erreur comme résolue** — depuis le scan, et suivi des résolutions
+- **Profil** — métier visé / niveau, pour adapter le prompt d'analyse
 
 ---
 
@@ -35,8 +36,9 @@ SkillPath est une application web locale mono-utilisateur qui combine l'analyse 
 
 ### Prérequis
 
-- Python 3.12
-- Une clé API OpenAI ([platform.openai.com](https://platform.openai.com))
+- **Python 3.12**
+- Une clé API OpenAI ([platform.openai.com](https://platform.openai.com)) — **optionnelle** : sans clé, l'app démarre en mode mock (voir plus bas)
+- **Windows uniquement** : selon la version de `chromadb` installée, un compilateur C++ peut être requis — voir [Note ChromaDB / Windows](#note-chromadb--windows).
 
 ### 1. Cloner le projet
 
@@ -49,9 +51,12 @@ cd SkillPath
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# ou
-.venv\Scripts\activate     # Windows
+
+# Linux / macOS
+source .venv/bin/activate
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
 ```
 
 ### 3. Installer les dépendances
@@ -60,18 +65,42 @@ source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
 ```
 
-### 4. Configurer l'environnement
+> **Windows sans Visual C++ Build Tools** : si l'installation échoue sur `chroma-hnswlib`
+> (`Microsoft Visual C++ 14.0 or greater is required`), voir la
+> [Note ChromaDB / Windows](#note-chromadb--windows) ci-dessous.
 
-Crée un fichier `.env` à la racine :
+### 4. Créer le dossier de données
+
+L'app stocke sa base SQLite, l'index ChromaDB, les PDF importés et les rapports dans `data/`.
+Ce dossier est **gitignoré** (donc absent après un clone) : crée-le avant le premier lancement.
+
+```bash
+# Linux / macOS
+mkdir -p data/chromadb data/uploads data/reports
+
+# Windows (PowerShell)
+mkdir data\chromadb, data\uploads, data\reports
+```
+
+### 5. Configurer l'environnement
+
+Copie le fichier d'exemple et remplis tes valeurs :
+
+```bash
+cp .env.example .env
+```
 
 ```env
 OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-Sans clé API, l'app démarre en **mode mock** — des erreurs fictives sont retournées pour tester le pipeline sans coût.
+> Sans clé API (ou `OPENAI_API_KEY` vide), l'app démarre en **mode mock** — des erreurs fictives
+> sont retournées pour tester le pipeline complet sans coût ni appel réseau.
+> Les chemins (`data/...`) sont calculés automatiquement ; ne les surcharge dans `.env`
+> qu'avec des chemins **absolus** (voir `.env.example`).
 
-### 5. Lancer l'application
+### 6. Lancer l'application
 
 ```bash
 uvicorn main:app --reload
@@ -81,11 +110,36 @@ Ouvre [http://localhost:8000](http://localhost:8000) dans ton navigateur.
 
 ---
 
+## Note ChromaDB / Windows
+
+`requirements.txt` épingle `chromadb==0.4.24`, qui dépend de `chroma-hnswlib==0.7.3`.
+Cette version **n'a pas de wheel pré-compilé** : `pip` doit la **compiler**, ce qui nécessite
+les **Microsoft C++ Build Tools**. Sur une machine qui les a déjà (souvent installés avec
+Visual Studio), l'installation passe sans rien faire de plus.
+
+Si ce n'est pas ton cas, deux options :
+
+- **A — Installer une version récente de ChromaDB (recommandé, sans compilateur)**
+  Les versions récentes fournissent des binaires prêts à l'emploi. Le code n'utilise
+  que l'API stable (`PersistentClient`, `upsert`, `query`...), donc aucun changement de code.
+
+  ```bash
+  pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9 \
+    openai==1.109.1 pymupdf==1.24.9 python-dotenv==1.0.1 \
+    pydantic==2.7.1 pydantic-settings==2.3.0 chromadb --only-binary=:all:
+  ```
+
+- **B — Installer les Microsoft C++ Build Tools** pour garder `chromadb==0.4.24` tel quel
+  ([télécharger](https://visualstudio.microsoft.com/visual-cpp-build-tools/)), puis relancer
+  `pip install -r requirements.txt`.
+
+---
+
 ## Utilisation
 
 ### Étape 1 — Importer tes cours
 
-Depuis la page **Import cours**, glisse un PDF de cours (max 10 Mo). Il est découpé en chunks et vectorisé dans ChromaDB.
+Depuis la page **Import cours**, glisse un PDF de cours. Il est découpé en chunks et vectorisé dans ChromaDB.
 
 ### Étape 2 — Scanner du code
 
@@ -106,60 +160,78 @@ La page **Ma progression** affiche une courbe d'évolution sur 7 ou 30 jours ain
 ```
 SkillPath/
 ├── backend/
-│   ├── config.py               # Configuration (clé API, chemins)
+│   ├── config.py                 # Configuration (clé API, chemins)
 │   ├── models/
-│   │   └── schemas.py          # Modèles Pydantic
+│   │   └── schemas.py            # Modèles Pydantic
 │   ├── routers/
-│   │   ├── import_router.py    # POST /import
-│   │   ├── scan_router.py      # POST /scan
-│   │   ├── rapport_router.py   # GET /rapport, GET /rapport/hier
-│   │   └── stats_router.py     # GET /stats/dashboard
+│   │   ├── import_router.py      # /import (upload, liste, chunk, suppression, réimport)
+│   │   ├── scan_router.py        # /scan
+│   │   ├── rapport_router.py     # /rapport (jour, hier, dates, export)
+│   │   ├── stats_router.py       # /stats/dashboard
+│   │   ├── resolutions_router.py # /resolutions (marquer résolu / lister / annuler)
+│   │   └── profil_router.py      # /profil (lecture / mise à jour)
 │   └── services/
-│       ├── pdf_service.py      # Parsing et chunking PDF
-│       ├── chroma_service.py   # Embeddings et recherche vectorielle
-│       ├── rag_service.py      # Recherche de cours pertinents
-│       ├── llm_service.py      # Analyse de code via OpenAI
-│       ├── sqlite_service.py   # Persistance des analyses
-│       ├── rapport_service.py  # Génération du rapport journalier
-│       └── stats_service.py    # Agrégation des statistiques
+│       ├── pdf_service.py        # Parsing et chunking PDF
+│       ├── chroma_service.py     # Embeddings et recherche vectorielle
+│       ├── rag_service.py        # Recherche de cours pertinents
+│       ├── llm_service.py        # Analyse de code via OpenAI
+│       ├── sqlite_service.py     # Persistance des analyses
+│       ├── rapport_service.py    # Génération du rapport journalier
+│       ├── stats_service.py      # Agrégation des statistiques
+│       └── upload_utils.py       # Utilitaires d'upload de fichiers
 ├── frontend/
 │   ├── static/
-│   │   └── style.css           # Design system global
+│   │   ├── style.css             # Design system global
+│   │   └── js/                   # Scripts front (vanilla)
 │   └── templates/
-│       ├── base.html           # Layout commun (sidebar, nav)
-│       ├── import.html         # Page import cours
-│       ├── scan.html           # Page scanner du code
-│       ├── rapport.html        # Page rapport journalier
-│       └── dashboard.html      # Page dashboard progression
+│       ├── base.html             # Layout commun (sidebar, nav)
+│       ├── import.html           # Page import cours
+│       ├── scan.html             # Page scanner du code
+│       ├── rapport.html          # Page rapport journalier
+│       └── dashboard.html        # Page dashboard progression
 ├── tests/
-│   ├── test_llm_service.py     # Tests _parse_erreurs()
-│   ├── test_pdf_service.py     # Tests decouper_en_chunks()
-│   ├── test_rapport_service.py # Tests rapport_service
-│   └── test_stats_service.py  # Tests stats_service
-├── data/                       # Données locales (gitignorées)
-│   ├── chromadb/               # Base vectorielle
-│   ├── uploads/                # PDFs importés
-│   └── reports/                # Rapports HTML exportés
-├── main.py                     # Point d'entrée FastAPI
+│   ├── test_llm_service.py       # Tests _parse_erreurs()
+│   ├── test_pdf_service.py       # Tests decouper_en_chunks()
+│   ├── test_rapport_service.py   # Tests rapport_service
+│   └── test_stats_service.py    # Tests stats_service
+├── data/                         # Données locales (gitignorées — à créer, voir étape 4)
+│   ├── chromadb/                 # Base vectorielle
+│   ├── coach.db                  # Base SQLite (créée au 1er lancement)
+│   ├── uploads/                  # PDFs importés
+│   └── reports/                  # Rapports HTML exportés
+├── main.py                       # Point d'entrée FastAPI
 ├── requirements.txt
-└── .env                        # Variables d'environnement (non commité)
+├── .env.example
+└── .env                          # Variables d'environnement (non commité)
 ```
 
 ---
 
 ## API — Endpoints principaux
 
-| Méthode | Endpoint             | Description                                                 |
-| -------- | -------------------- | ----------------------------------------------------------- |
-| `POST` | `/import/`         | Import un PDF de cours                                      |
-| `GET`  | `/import/liste`    | Liste les cours importés                                   |
-| `POST` | `/scan/`           | Analyse un fichier de code                                  |
-| `GET`  | `/rapport/`        | Rapport du jour                                             |
-| `GET`  | `/rapport/hier`    | Rapport d'hier (pour les deltas)                            |
-| `GET`  | `/rapport/export`  | Export HTML du rapport                                      |
-| `GET`  | `/stats/dashboard` | Stats de progression (`?periode=semaine\|mois&offset=0\|1`) |
+Toutes les routes API sont documentées et testables sur [http://localhost:8000/docs](http://localhost:8000/docs).
 
-Documentation interactive disponible sur [http://localhost:8000/docs](http://localhost:8000/docs).
+| Méthode  | Endpoint                    | Description                                                 |
+| -------- | --------------------------- | ----------------------------------------------------------- |
+| `GET`    | `/health`                   | Vérifie que le serveur tourne                               |
+| `POST`   | `/import/`                  | Importe un PDF de cours                                     |
+| `GET`    | `/import/liste`             | Liste les cours importés                                    |
+| `GET`    | `/import/chunk`             | Récupère un extrait (chunk) d'un cours                      |
+| `DELETE` | `/import/{nom_fichier}`     | Supprime un cours importé                                   |
+| `POST`   | `/import/reimporter-tout`   | Réindexe tous les cours                                     |
+| `POST`   | `/scan/`                    | Analyse un fichier de code                                  |
+| `GET`    | `/rapport/`                 | Rapport du jour                                             |
+| `GET`    | `/rapport/hier`             | Rapport d'hier (pour les deltas)                            |
+| `GET`    | `/rapport/dates`            | Liste des dates ayant un rapport                            |
+| `GET`    | `/rapport/export`           | Export HTML du rapport                                      |
+| `GET`    | `/stats/dashboard`          | Stats de progression (`?periode=semaine\|mois&offset=0\|1`) |
+| `GET`    | `/resolutions/`             | Liste les erreurs marquées comme résolues                   |
+| `PUT`    | `/resolutions/{signature}`  | Marque une erreur comme résolue                             |
+| `DELETE` | `/resolutions/{signature}`  | Annule une résolution                                       |
+| `GET`    | `/profil/`                  | Récupère le profil (métier visé, niveau)                    |
+| `PUT`    | `/profil/`                  | Met à jour le profil                                        |
+
+Pages frontend : `/` (ou `/import-cours`), `/scan-code`, `/rapport-jour`, `/dashboard`.
 
 ---
 
@@ -189,6 +261,9 @@ pytest tests/ -v
 | `UPLOADS_PATH`   | Chemin uploads      | `data/uploads`           |
 | `REPORTS_PATH`   | Chemin exports HTML | `data/reports`           |
 
+> Les chemins sont calculés automatiquement à partir de la racine du projet.
+> Ne les définis dans `.env` que pour stocker les données ailleurs, avec des **chemins absolus**.
+
 ---
 
 ## Limitations connues (V2)
@@ -204,64 +279,3 @@ pytest tests/ -v
 
 Projet réalisé dans le cadre d'une formation en reconversion professionnelle — **Nico**
 GitHub : [github.com/Nico01210/SkillPath](https://github.com/Nico01210/SkillPath)
-
-# SkillPath
-
-Application web locale qui analyse ton code, identifie tes lacunes, te renvoie vers les cours pertinents et fait un suivi de ta progression.
-
-## Stack
-
-* **Backend** : Python 3.11 + FastAPI
-* **IA** : OpenAI API (GPT-4o Mini)
-* **RAG** : ChromaDB (base vectorielle locale)
-* **BDD** : SQLite (historique des analyses)
-* **Frontend** : HTML + CSS + JS vanilla
-
-## Installation
-
-```bash
-# 1. Cloner le projet
-git clone ...
-cd SkillPath
-
-# 2. Créer l'environnement virtuel
-python -m venv .venv
-source .venv/bin/activate      # Mac/Linux
-# .venv\Scripts\activate       # Windows
-
-# 3. Installer les dépendances
-pip install -r requirements.txt
-
-# 4. Configurer les variables d'environnement
-cp .env.example .env
-# Ouvre .env et colle ta clé OpenAI
-
-# 5. Lancer le serveur
-uvicorn main:app --reload
-```
-
-## Accès
-
-* App : [http://localhost:8000](http://localhost:8000)
-* Docs API (auto-générées) : [http://localhost:8000/docs](http://localhost:8000/docs)
-
-## Structure
-
-```
-SkillPath/
-├── main.py                  # Point d'entrée FastAPI
-├── requirements.txt
-├── .env.example
-├── backend/
-│   ├── config.py            # Variables d'environnement
-│   ├── routers/             # Endpoints : import, scan, rapport
-│   ├── services/            # Logique métier : RAG, LLM, PDF, SQLite
-│   └── models/              # Schémas Pydantic (validation des données)
-├── frontend/
-│   ├── static/              # CSS, JS
-│   └── templates/           # HTML
-└── data/
-    ├── chromadb/            # Base vectorielle (gitignorée)
-    ├── uploads/             # PDFs importés (gitignorés)
-    └── reports/             # Rapports HTML exportés (gitignorés)
-```
