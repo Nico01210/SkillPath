@@ -55,6 +55,10 @@ def _parse_erreurs(texte: str) -> list[dict]:
     except json.JSONDecodeError:
         log.warning("LLM non-JSON: %r", texte[:200])
         return []
+    # Structured Outputs renvoie {"erreurs": [...]} ; on tolère aussi une liste
+    # brute (mode dégradé sans json_schema).
+    if isinstance(data, dict):
+        data = data.get("erreurs")
     if not isinstance(data, list):
         return []
     # Valide que chaque erreur a les clés attendues

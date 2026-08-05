@@ -71,8 +71,16 @@ def test_parse_filtre_champs_invalides_et_garde_valides():
     assert result[0]["titre"] == "Fonction trop longue"
 
 
+def test_parse_enveloppe_structured_outputs():
+    """Format Structured Outputs {"erreurs": [...]} → erreurs extraites"""
+    import json
+    result = _parse_erreurs(json.dumps({"erreurs": [ERREUR_VALIDE]}))
+    assert len(result) == 1
+    assert result[0]["titre"] == "Fonction trop longue"
+
+
 def test_parse_retourne_pas_une_liste():
-    """Si GPT retourne un dict au lieu d'une liste → liste vide"""
+    """Si GPT retourne un dict sans clé "erreurs" → liste vide"""
     import json
     result = _parse_erreurs(json.dumps(ERREUR_VALIDE))
     assert result == []

@@ -19,3 +19,6 @@ pymupdf==1.24.9
 python-dotenv==1.0.1
 pydantic==2.7.1
 pydantic-settings==2.3.0
+
+# Tests
+pytest==8.2.2
