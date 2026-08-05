@@ -1,6 +1,6 @@
 from backend.config import settings
 from backend.models.schemas import Erreur, CoursLie
-from backend.services import rag_service
+from backend.services import rag_service, sqlite_service
 from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionError
 
 import logging
@@ -128,11 +128,18 @@ Règles strictes :
 - L'extrait doit être le code fautif exact (pas le code corrigé)
 - Adapte ton analyse au langage détecté (Python, Java, PHP, JS...)
 - Ignore les erreurs triviales (nommage de variables simples, commentaires manquants)
+- Priorise ce qui compte pour le métier visé par l'étudiant (indiqué en tête du
+  message) et calibre ton vocabulaire sur son niveau
 
 Réponds au format défini par le schéma JSON fourni."""
 
+    # Le profil oriente l'analyse : les priorités d'un « développeur back-end »
+    # ne sont pas celles d'un « intégrateur web ».
+    profil = sqlite_service.get_profil()
+    bloc_profil = f"Étudiant : {profil['name']} — métier visé : {profil['role']}\n"
+
     bloc_cours = f"{contexte_cours}\n\n" if contexte_cours else ""
-    prompt_utilisateur = f"""Fichier : {filename}
+    prompt_utilisateur = f"""{bloc_profil}Fichier : {filename}
 
 {bloc_cours}Code à analyser :
 {contenu}"""

@@ -1,8 +1,38 @@
 from backend.models.schemas import CoursLie
 from backend.services import chroma_service
 RELEVANCE_THRESHOLD = 0.3
- 
- 
+
+# Longueur max de l'aperçu de contenu affiché dans un titre de cours
+TITRE_APERCU_MAX = 42
+
+
+def titre_lisible(source: str, chunk_index: int, texte: str = "") -> str:
+    """
+    Construit un libellé lisible pour un extrait de cours.
+
+    « Algorithmie.pdf — chunk 0 » ne dit rien à la lecture : c'est pourtant le
+    texte affiché sur les tags « Cours à relire ». On lui préfère le nom du
+    cours suivi des premiers mots de l'extrait, ce qui donne
+    « Algorithmie — Les types de variables en Java… ».
+
+    Le chunking aplatit les retours à la ligne du PDF (`texte.split()`), donc il
+    n'y a pas de « première ligne » à isoler : on prend un aperçu tronqué sur
+    une frontière de mot. Sans texte exploitable, on retombe sur « extrait N ».
+    """
+    nom = source[:-4] if source.lower().endswith(".pdf") else source
+    apercu = " ".join((texte or "").split())
+
+    if len(apercu) < 12:
+        return f"{nom} — extrait {chunk_index + 1}"
+
+    if len(apercu) > TITRE_APERCU_MAX:
+        coupe = apercu[:TITRE_APERCU_MAX].rsplit(" ", 1)[0]
+        apercu = f"{coupe or apercu[:TITRE_APERCU_MAX]}…"
+
+    return f"{nom} — {apercu}"
+
+
+
 def trouver_cours_pertinents(description_erreur: str, n: int = 3) -> list[CoursLie]:
     """
     Prend la description d'une erreur détectée dans le code
@@ -26,7 +56,7 @@ def trouver_cours_pertinents(description_erreur: str, n: int = 3) -> list[CoursL
         # score < RELEVANCE_THRESHOLD = trop éloigné sémantiquement, on l'ignore
         if r["score"] >= RELEVANCE_THRESHOLD:
             cours.append(CoursLie(
-                titre=f"{r['source']} — chunk {r['chunk_index']}",
+                titre=titre_lisible(r["source"], r["chunk_index"], r["text"]),
                 chunk_id=chroma_service.chunk_id(r["source"], r["chunk_index"])
             ))
  
