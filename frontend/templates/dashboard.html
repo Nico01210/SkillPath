@@ -107,8 +107,12 @@
       const current = await resCurrent.json();
       const prev    = resPrev.ok ? await resPrev.json() : { total_erreurs: 0, total_fichiers: 0, courbe: [] };
 
-      if (current.total_erreurs === 0) {
-        document.getElementById('emptyState').classList.remove('hidden');
+      // « Tout est résolu » n'est pas « aucune donnée » : dans ce cas on rend la
+      // vue normalement (courbe et compteurs à zéro) — c'est précisément ce que
+      // la progression est censée montrer. L'état vide est réservé aux périodes
+      // où rien n'a jamais été détecté.
+      if (current.total_erreurs === 0 && !current.total_resolues) {
+        afficherEtatVide();
         return;
       }
 
@@ -137,7 +141,25 @@
   }
 
   function hideFeedback() { document.getElementById('feedback').classList.add('hidden'); }
- 
+
+  // ── État vide ─────────────────────────────────────
+  // Remet la vue à zéro : sans ça, le graphe et les chiffres de la période
+  // précédente restaient affichés sous le message « Aucune donnée ».
+  function afficherEtatVide() {
+    if (chart) { chart.destroy(); chart = null; }
+    ['statTotal', 'statCritiques', 'statFichiers'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+    });
+    ['deltaTotal', 'deltaCritiques', 'deltaFichiers'].forEach(id => {
+      const el = document.getElementById(id);
+      el.textContent = '';
+      el.className = 'stat-delta';
+    });
+    document.getElementById('topErreurs').innerHTML = '';
+    document.getElementById('topCours').innerHTML = '';
+    document.getElementById('emptyState').classList.remove('hidden');
+  }
+
   // ── Delta ─────────────────────────────────────────
   function afficherStat(idVal, idDelta, valeur, prevValeur, inverseColor) {
     document.getElementById(idVal).textContent = valeur;
