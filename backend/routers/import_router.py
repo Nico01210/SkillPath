@@ -61,7 +61,13 @@ async def importer_pdf(fichier: UploadFile = File(...)):
         )
 
     except ValueError as e:
+        # PDF illisible, sans texte, ou trop pauvre pour être indexé
         raise HTTPException(status_code=422, detail=str(e))
+
+    except HTTPException:
+        # Déjà qualifiée (400 nom invalide, 413...) — la laisser passer telle
+        # quelle, sinon le except ci-dessous la transformerait en 500.
+        raise
 
     except Exception:
         log.exception("import failed for %s", fichier.filename)

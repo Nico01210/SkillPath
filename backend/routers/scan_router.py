@@ -54,6 +54,10 @@ async def scanner_fichier(fichier: UploadFile = File(...)):
         # Analyse IA illisible / tronquée — message explicite plutôt qu'un faux « 0 erreur »
         raise HTTPException(status_code=422, detail=str(e))
 
+    except HTTPException:
+        # Déjà qualifiée — ne pas la ré-emballer en 500 ci-dessous.
+        raise
+
     except Exception:
         log.exception("scan failed for %s", fichier.filename)
         raise HTTPException(status_code=500, detail="Erreur interne lors de l'analyse")

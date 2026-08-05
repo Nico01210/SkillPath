@@ -14,8 +14,18 @@ def extraire_texte(pdf_bytes: bytes) -> tuple[str, int]:
     Lit un PDF depuis ses bytes bruts et retourne (texte, nombre_de_pages).
     On reçoit des bytes car le fichier vient d'un upload FastAPI.
     """
-    # fitz.open avec stream= lit depuis la mémoire, pas depuis un fichier
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    # fitz.open avec stream= lit depuis la mémoire, pas depuis un fichier.
+    # Un fichier corrompu ou simplement renommé « .pdf » fait lever PyMuPDF :
+    # on le traduit en ValueError, que le routeur présente en 422 explicite
+    # plutôt qu'en 500 « Erreur interne » qui ressemble à un plantage.
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as exc:
+        raise ValueError(
+            "Fichier PDF illisible ou corrompu — vérifie qu'il s'ouvre "
+            "correctement dans un lecteur PDF."
+        ) from exc
+
     nb_pages = len(doc)
  
     texte_complet = []
@@ -77,6 +87,16 @@ def traiter_pdf(pdf_bytes: bytes, filename: str) -> dict:
                          "Vérifier qu'il ne se compose pas d'une image.")
  
     chunks = decouper_en_chunks(texte, source=filename)
+
+    # Un PDF dont tout le texte tient sous le seuil de decouper_en_chunks ne
+    # produit aucun chunk : sans ce garde-fou, l'import répondait « importé avec
+    # succès — 0 chunks créés », un succès affiché pour un non-événement.
+    if not chunks:
+        raise ValueError(
+            f"Le PDF '{filename}' contient trop peu de texte pour être indexé "
+            "(quelques mots seulement). Il s'agit probablement de pages en image."
+        )
+
     return {
         "chunks": chunks,
         "pages": nb_pages

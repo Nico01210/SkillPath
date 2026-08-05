@@ -77,3 +77,30 @@ def test_chunk_contenu_non_vide():
     chunks = decouper_en_chunks(texte, "test.pdf")
     for chunk in chunks:
         assert len(chunk["text"].strip()) > 0
+
+# ── traiter_pdf : chemins d'erreur ────────────────────
+def test_traiter_pdf_fichier_illisible():
+    """
+    Un fichier corrompu ou simplement renommé « .pdf » doit lever ValueError
+    (traduite en 422 par le routeur) et non remonter l'erreur PyMuPDF brute,
+    qui finissait en 500 « Erreur interne ».
+    """
+    import pytest
+    from backend.services.pdf_service import traiter_pdf
+
+    with pytest.raises(ValueError, match="illisible"):
+        traiter_pdf(b"ceci n'est pas un PDF", "faux.pdf")
+
+
+def test_traiter_pdf_trop_peu_de_texte():
+    """
+    Un PDF dont le texte tient sous le seuil de chunking ne produit aucun chunk :
+    on refuse l'import au lieu d'annoncer « importé — 0 chunks créés ».
+    """
+    import pytest
+    from unittest.mock import patch
+    from backend.services.pdf_service import traiter_pdf
+
+    with patch("backend.services.pdf_service.extraire_texte", return_value=("trois petits mots", 1)):
+        with pytest.raises(ValueError, match="trop peu de texte"):
+            traiter_pdf(b"%PDF-fake", "slides.pdf")
