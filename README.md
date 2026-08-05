@@ -13,8 +13,8 @@ SkillPath est une application web locale mono-utilisateur qui combine l'analyse 
 - **Recommandations RAG** — croise chaque erreur avec tes cours importés et pointe vers les chapitres pertinents
 - **Rapport journalier** — synthèse de toutes les analyses du jour avec export HTML, comparaison avec la veille
 - **Dashboard de progression** — courbe d'évolution sur 7 ou 30 jours, top 3 erreurs récurrentes, top 3 cours recommandés, deltas vs période précédente
-- **Marquer une erreur comme résolue** — depuis le scan, et suivi des résolutions
-- **Profil** — métier visé / niveau, pour adapter le prompt d'analyse
+- **Marquer une erreur comme résolue** — depuis le scan ; l'erreur sort alors des compteurs et de la courbe de progression
+- **Profil** — nom et métier visé, injectés dans le prompt d'analyse pour orienter les priorités de l'IA
 
 ---
 
@@ -38,7 +38,6 @@ SkillPath est une application web locale mono-utilisateur qui combine l'analyse 
 
 - **Python 3.12**
 - Une clé API OpenAI ([platform.openai.com](https://platform.openai.com)) — **optionnelle** : sans clé, l'app démarre en mode mock (voir plus bas)
-- **Windows uniquement** : selon la version de `chromadb` installée, un compilateur C++ peut être requis — voir [Note ChromaDB / Windows](#note-chromadb--windows).
 
 ### 1. Cloner le projet
 
@@ -65,9 +64,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Windows sans Visual C++ Build Tools** : si l'installation échoue sur `chroma-hnswlib`
-> (`Microsoft Visual C++ 14.0 or greater is required`), voir la
-> [Note ChromaDB / Windows](#note-chromadb--windows) ci-dessous.
+> Aucun compilateur C++ n'est nécessaire : `chromadb` est épinglé sur une version
+> qui fournit des wheels pré-compilés (voir [Note ChromaDB / Windows](#note-chromadb--windows)).
 
 ### 4. Créer le dossier de données
 
@@ -112,26 +110,15 @@ Ouvre [http://localhost:8000](http://localhost:8000) dans ton navigateur.
 
 ## Note ChromaDB / Windows
 
-`requirements.txt` épingle `chromadb==0.4.24`, qui dépend de `chroma-hnswlib==0.7.3`.
-Cette version **n'a pas de wheel pré-compilé** : `pip` doit la **compiler**, ce qui nécessite
-les **Microsoft C++ Build Tools**. Sur une machine qui les a déjà (souvent installés avec
-Visual Studio), l'installation passe sans rien faire de plus.
+`requirements.txt` épingle **`chromadb==1.5.9`**, qui fournit des **wheels pré-compilés** :
+`pip install -r requirements.txt` fonctionne sans outillage supplémentaire.
 
-Si ce n'est pas ton cas, deux options :
+À éviter : les versions `0.4.x` dépendent de `chroma-hnswlib==0.7.3`, qui **n'a pas de wheel**
+et doit être compilée — d'où l'erreur `Microsoft Visual C++ 14.0 or greater is required` sur
+une machine sans les Microsoft C++ Build Tools.
 
-- **A — Installer une version récente de ChromaDB (recommandé, sans compilateur)**
-  Les versions récentes fournissent des binaires prêts à l'emploi. Le code n'utilise
-  que l'API stable (`PersistentClient`, `upsert`, `query`...), donc aucun changement de code.
-
-  ```bash
-  pip install fastapi==0.111.0 "uvicorn[standard]==0.29.0" python-multipart==0.0.9 \
-    openai==1.109.1 pymupdf==1.24.9 python-dotenv==1.0.1 \
-    pydantic==2.7.1 pydantic-settings==2.3.0 chromadb --only-binary=:all:
-  ```
-
-- **B — Installer les Microsoft C++ Build Tools** pour garder `chromadb==0.4.24` tel quel
-  ([télécharger](https://visualstudio.microsoft.com/visual-cpp-build-tools/)), puis relancer
-  `pip install -r requirements.txt`.
+Le code n'utilise que l'API stable (`PersistentClient`, `upsert`, `query`, `get`, `delete`),
+il est donc compatible avec les deux lignées.
 
 ---
 
@@ -190,10 +177,12 @@ SkillPath/
 │       ├── rapport.html          # Page rapport journalier
 │       └── dashboard.html        # Page dashboard progression
 ├── tests/
+│   ├── test_schemas.py           # Tests signature d'erreur, profil
 │   ├── test_llm_service.py       # Tests _parse_erreurs()
-│   ├── test_pdf_service.py       # Tests decouper_en_chunks()
+│   ├── test_pdf_service.py       # Tests decouper_en_chunks(), traiter_pdf()
+│   ├── test_rag_service.py       # Tests titre_lisible()
 │   ├── test_rapport_service.py   # Tests rapport_service
-│   └── test_stats_service.py    # Tests stats_service
+│   └── test_stats_service.py     # Tests stats_service
 ├── data/                         # Données locales (gitignorées — à créer, voir étape 4)
 │   ├── chromadb/                 # Base vectorielle
 │   ├── coach.db                  # Base SQLite (créée au 1er lancement)
@@ -241,12 +230,14 @@ Pages frontend : `/` (ou `/import-cours`), `/scan-code`, `/rapport-jour`, `/dash
 pytest tests/ -v
 ```
 
-33 tests unitaires couvrant :
+64 tests unitaires couvrant :
 
+- `signature_erreur()` — stabilité de la signature d'une erreur d'un scan à l'autre
 - `_parse_erreurs()` — parsing robuste du JSON LLM (backticks, JSON invalide, champs manquants)
-- `decouper_en_chunks()` — découpage PDF (taille, chevauchement, structure)
-- `get_rapport_du_jour/hier()` — agrégation des analyses + échappement XSS
-- `get_stats()` — agrégation SQL avec SQLite en mémoire
+- `decouper_en_chunks()` / `traiter_pdf()` — découpage PDF, PDF illisible, PDF sans texte
+- `titre_lisible()` — libellé des extraits de cours (troncature, replis)
+- `get_rapport_du_jour/hier()` — agrégation, déduplication des re-scans, échappement XSS
+- `get_stats()` — agrégation SQL avec SQLite en mémoire, exclusion des erreurs résolues
 
 ---
 
@@ -266,11 +257,47 @@ pytest tests/ -v
 
 ---
 
+## Comment une erreur est suivie dans le temps
+
+Une erreur est identifiée par une **signature** = `sha1(fichier | ligne | niveau)`.
+Le titre est volontairement **exclu** du calcul : c'est du texte libre généré par le LLM,
+reformulé d'un scan à l'autre (« Injection SQL potentielle » / « Injection SQL possible »).
+L'inclure faisait perdre l'état « résolu » à chaque re-scan.
+
+Conséquences visibles :
+
+- re-scanner le même fichier dans la journée **ne duplique pas** les cartes du rapport ;
+- marquer une erreur résolue la **retire** du dashboard (compteurs et courbe) ;
+- dans le Top 3, `occurrences` compte le **nombre de jours** où l'erreur a été détectée,
+  pas le nombre de scans.
+
+---
+
+## Qualité de la recherche de cours (RAG)
+
+La pertinence dépend directement du **texte extractible** des PDF importés :
+
+- un cours **rédigé** (paragraphes) donne de bons résultats ;
+- un cours composé de **captures d'écran ou de slides images** produit très peu de texte,
+  donc peu de chunks et des scores de similarité sous `RELEVANCE_THRESHOLD` (0.3) —
+  les erreurs affichent alors « Aucun cours lié ».
+
+Le modèle d'embedding par défaut (`all-MiniLM-L6-v2`) est **anglophone** : sur du contenu
+français, les scores sont mécaniquement plus bas. Un modèle multilingue
+(`paraphrase-multilingual-MiniLM-L12-v2`) améliorerait la pertinence, au prix d'une
+réindexation complète (`POST /import/reimporter-tout`).
+
+---
+
 ## Limitations connues (V2)
 
 - Application mono-utilisateur locale — pas d'authentification
 - Import PDF un fichier à la fois
-- Les titres de cours recommandés affichent le nom du chunk (`cours.pdf — chunk 2`) plutôt qu'un titre lisible
+- Le titre d'un extrait de cours est un aperçu de son contenu, pas un vrai titre de chapitre
+  (le chunking aplatit la mise en page du PDF)
+- Modèle d'embedding anglophone (voir ci-dessus)
+- Le dashboard est une fenêtre glissante de 7 ou 30 jours ; l'`offset` (période précédente)
+  existe côté API mais n'est pas exposé dans l'interface
 - Pas de tests d'intégration (ChromaDB, OpenAI)
 
 ---
