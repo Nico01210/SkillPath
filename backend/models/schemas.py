@@ -21,6 +21,22 @@ class CoursLie(BaseModel):
     titre: str          # ex: "Chapitre 3 — Fonctions et SRP"
     chunk_id: str       # identifiant du morceau dans ChromaDB
 
+
+def signature_erreur(fichier: str, ligne: int, niveau: str) -> str:
+    """
+    Identifiant stable d'une erreur — volontairement basé sur sa POSITION
+    (fichier + ligne + gravité) et non sur son titre.
+
+    Le titre est du texte libre généré par le LLM : il varie d'un scan à
+    l'autre (« Injection SQL potentielle » / « Injection SQL possible ») même à
+    température basse. L'inclure faisait changer la signature à chaque re-scan,
+    ce qui perdait l'état « résolu » et dédoublait la même erreur dans le
+    Top 3 des erreurs récurrentes.
+    """
+    cle = f"{fichier}|{ligne}|{niveau}"
+    return hashlib.sha1(cle.encode("utf-8")).hexdigest()[:16]
+
+
 class Erreur(BaseModel):
     niveau: Literal["critique", "avertissement"]
     titre: str          # ex: "Fonction trop longue"
@@ -34,13 +50,11 @@ class Erreur(BaseModel):
     @property
     def signature(self) -> str:
         """
-        Identifiant stable d'une erreur, basé sur son contenu (fichier + titre +
-        ligne). Permet de mémoriser qu'une erreur est « résolue » indépendamment
-        de l'analyse dont elle provient : la même erreur re-détectée plus tard
-        garde la même signature.
+        Identifiant stable d'une erreur. Permet de mémoriser qu'elle est
+        « résolue » indépendamment de l'analyse dont elle provient : la même
+        erreur re-détectée plus tard garde la même signature.
         """
-        cle = f"{self.fichier}|{self.titre}|{self.ligne}"
-        return hashlib.sha1(cle.encode("utf-8")).hexdigest()[:16]
+        return signature_erreur(self.fichier, self.ligne, self.niveau)
 
 # Ce que retourne POST /scan
 class ScanResponse(BaseModel):
@@ -90,8 +104,8 @@ class PointCourbe(BaseModel):
     avertissements: int
  
 class ErreurRecurrente(BaseModel):
-    titre: str              # nombre de fois détectée sur la période
-    occurrences: int
+    titre: str              # libellé de la détection la plus récente
+    occurrences: int        # nombre de jours où l'erreur a été détectée
     niveau: Literal["critique", "avertissement"]
  
 class CoursFrequent(BaseModel):
@@ -104,7 +118,8 @@ class StatsResponse(BaseModel):
     date_debut: str
     date_fin: str
     total_fichiers: int
-    total_erreurs: int
+    total_erreurs: int      # erreurs encore ouvertes (les résolues sont exclues)
+    total_resolues: int = 0 # erreurs de la période marquées comme résolues
     courbe: list[PointCourbe]
     erreurs_recurrentes: list[ErreurRecurrente]
     cours_frequents: list[CoursFrequent]
