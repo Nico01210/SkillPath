@@ -15,7 +15,14 @@ def get_rapport(jour: date) -> RapportResponse:
     """
     analyses = sqlite_service.get_analyses_par_date(jour)
 
-    toutes_erreurs = []
+    # Re-scanner le même fichier dans la journée re-détecte les mêmes erreurs.
+    # On les déduplique par signature pour ne pas afficher deux fois la même
+    # carte ni compter deux fois le même problème : sinon les stat cards, la
+    # liste et la barre « X/Y résolues » affichaient trois chiffres différents
+    # pour la même réalité.
+    # dict : la position vient de la 1re détection (l'ordre des cartes ne bouge
+    # pas d'un scan à l'autre), le contenu de la plus récente.
+    par_signature: dict[str, Erreur] = {}
     fichiers_vus = set()
 
     for analyse in analyses:
@@ -23,7 +30,7 @@ def get_rapport(jour: date) -> RapportResponse:
         for e in analyse["erreurs"]:
             # Reconstruit les objets Pydantic depuis les dicts JSON
             cours = [CoursLie(**c) for c in e.get("cours", [])]
-            toutes_erreurs.append(Erreur(
+            erreur = Erreur(
                 niveau=e["niveau"],
                 titre=e["titre"],
                 fichier=e["fichier"],
@@ -31,7 +38,10 @@ def get_rapport(jour: date) -> RapportResponse:
                 description=e["description"],
                 extrait=e["extrait"],
                 cours=cours
-            ))
+            )
+            par_signature[erreur.signature] = erreur
+
+    toutes_erreurs = list(par_signature.values())
 
     critiques = sum(1 for e in toutes_erreurs if e.niveau == "critique")
     avertissements = sum(1 for e in toutes_erreurs if e.niveau == "avertissement")
@@ -65,14 +75,12 @@ def generer_html(rapport: RapportResponse) -> str:
     Génère le HTML complet du rapport journalier.
     Retourne une chaîne HTML prête à être sauvegardée ou envoyée.
     """
-    # Compteur de progression — X/Y erreurs résolues
-    # Une même erreur peut être détectée plusieurs fois dans la journée (re-scans
-    # du même fichier) et partage alors la même signature : on compte les erreurs
-    # distinctes, pas les occurrences, pour ne pas faire bondir le compteur.
+    # Compteur de progression — X/Y erreurs résolues.
+    # get_rapport() a déjà dédupliqué les erreurs par signature : une carte =
+    # une erreur distincte, donc le total du compteur = le nombre de cartes.
     resolutions = set(sqlite_service.get_resolutions())
-    signatures = {e.signature for e in rapport.erreurs}
-    total_erreurs = len(signatures)
-    erreurs_resolues = len(signatures & resolutions)
+    total_erreurs = len(rapport.erreurs)
+    erreurs_resolues = sum(1 for e in rapport.erreurs if e.signature in resolutions)
     pct_resolues = round((erreurs_resolues / total_erreurs) * 100) if total_erreurs else 0
 
     profil = sqlite_service.get_profil()
@@ -81,9 +89,22 @@ def generer_html(rapport: RapportResponse) -> str:
     # Génère les cartes d'erreurs
     cartes_html = ""
     for e in rapport.erreurs:
+        # Une erreur cochée « résolue » dans l'app doit se voir dans l'export,
+        # sinon le compteur « 1/2 résolues » n'est illustré par rien.
+        if e.signature in resolutions:
+            cartes_html += f"""
+        <div class="card resolu">
+          <div class="card-header">
+            <span class="badge resolu">✓ Résolu</span>
+            <span class="card-title barre">{html.escape(e.titre)}</span>
+            <span class="card-meta">{html.escape(e.fichier)} · ligne {e.ligne}</span>
+          </div>
+        </div>"""
+            continue
+
         niveau_class = "critique" if e.niveau == "critique" else "warning"
         niveau_label = "Critique" if e.niveau == "critique" else "Avertissement"
- 
+
         cours_tags = "".join([
             f'<span class="cours-tag">{html.escape(c.titre)}</span>'
             for c in e.cours
@@ -134,6 +155,9 @@ def generer_html(rapport: RapportResponse) -> str:
              padding: 1rem 1.25rem; margin-bottom: 12px; }}
     .card.critique {{ border-left: 3px solid #dc2626; }}
     .card.warning {{ border-left: 3px solid #d97706; }}
+    .card.resolu {{ border-left: 3px solid #16a34a; opacity: .7; }}
+    .badge.resolu {{ background: #dcfce7; color: #16a34a; }}
+    .card-title.barre {{ text-decoration: line-through; color: #6b7280; font-weight: 500; }}
     .card-header {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }}
     .badge {{ font-size: .7rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; }}
     .badge.critique {{ background: #fee2e2; color: #dc2626; }}

@@ -90,8 +90,10 @@ def get_analyses_par_date(jour: date) -> list[dict]:
     journée passée (historique).
     """
     conn = get_connexion()
+    # ORDER BY id : ordre chronologique garanti — le rapport déduplique les
+    # erreurs re-détectées en gardant la version du scan le plus récent.
     rows = conn.execute(
-        "SELECT * FROM analyses WHERE date = ?",
+        "SELECT * FROM analyses WHERE date = ? ORDER BY id ASC",
         (jour.isoformat(),)
     ).fetchall()
 

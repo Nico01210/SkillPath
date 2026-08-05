@@ -140,3 +140,68 @@ def test_generer_html_echappe_xss():
 
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+# ── Déduplication des re-scans ────────────────────────
+def _rapport_avec(analyses, resolutions=()):
+    """Construit un rapport en isolant sqlite_service."""
+    from importlib import reload
+    import backend.services.rapport_service as rs
+    with patch("backend.services.sqlite_service.get_analyses_par_date", return_value=analyses), \
+         patch("backend.services.sqlite_service.get_resolutions", return_value=list(resolutions)), \
+         patch("backend.services.sqlite_service.get_profil", return_value={"name": "Nico", "role": "Dev"}):
+        reload(rs)
+        rapport = rs.get_rapport_du_jour()
+        return rapport, rs.generer_html(rapport)
+
+
+def test_rapport_dedup_rescans_du_meme_fichier():
+    """
+    Scanner 3 fois le même fichier ne doit pas tripler les cartes ni les stats :
+    la même erreur (fichier/ligne/niveau) partage une signature.
+    """
+    rapport, _ = _rapport_avec([ANALYSE_MOCK, ANALYSE_MOCK, ANALYSE_MOCK])
+
+    assert len(rapport.erreurs) == 2          # et non 6
+    assert rapport.stats.critiques == 1
+    assert rapport.stats.avertissements == 1
+
+
+def test_rapport_dedup_garde_le_titre_le_plus_recent():
+    """Le titre affiché est celui de la détection la plus récente."""
+    ancienne = {**ANALYSE_MOCK, "erreurs": [
+        {**ANALYSE_MOCK["erreurs"][0], "titre": "Injection SQL potentielle"}
+    ]}
+    recente = {**ANALYSE_MOCK, "erreurs": [
+        {**ANALYSE_MOCK["erreurs"][0], "titre": "Injection SQL possible"}
+    ]}
+    rapport, _ = _rapport_avec([ancienne, recente])
+
+    assert len(rapport.erreurs) == 1
+    assert rapport.erreurs[0].titre == "Injection SQL possible"
+
+
+def test_rapport_compteur_coherent_avec_les_cartes():
+    """
+    Le total du compteur « X/Y résolues » doit égaler le nombre de cartes :
+    c'est l'incohérence qui affichait 3 critiques, 3 cartes et « 1/2 résolues ».
+    """
+    sig = None
+    rapport, _ = _rapport_avec([ANALYSE_MOCK])
+    sig = rapport.erreurs[0].signature
+
+    rapport, html = _rapport_avec([ANALYSE_MOCK, ANALYSE_MOCK], resolutions=[sig])
+    total = rapport.stats.critiques + rapport.stats.avertissements
+
+    assert total == len(rapport.erreurs) == 2
+    assert "1/2 erreurs résolues" in html
+
+
+def test_generer_html_marque_les_erreurs_resolues():
+    """Une erreur résolue apparaît bien comme résolue dans l'export."""
+    rapport, _ = _rapport_avec([ANALYSE_MOCK])
+    sig = rapport.erreurs[0].signature
+
+    _, html = _rapport_avec([ANALYSE_MOCK], resolutions=[sig])
+
+    assert "✓ Résolu" in html
