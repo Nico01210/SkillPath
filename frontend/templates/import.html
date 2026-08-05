@@ -161,16 +161,19 @@
       const pages  = meta.pages  ? `${meta.pages} pages · ` : '';
       const date   = meta.date   ? `importé le ${meta.date}` : '';
       const chunks = meta.chunks ?? '—';
+      // Nom passé par data-* et non par onclick="...('${nom}')" : une apostrophe
+      // dans le nom du fichier (fréquent en français, « cours d'algo.pdf »)
+      // fermait la chaîne JS et cassait le bouton Supprimer.
       return `
         <div class="cours-card">
           <div class="pdf-icon-sm">PDF</div>
           <div class="cours-card-info">
-            <div class="cours-card-title">${nom}</div>
+            <div class="cours-card-title">${escapeHtml(nom)}</div>
             <div class="cours-card-meta">PDF · ${pages}${date}</div>
           </div>
           <span class="badge-indexed">Indexé</span>
           <span class="badge-chunks">${chunks} chunks</span>
-          <button class="btn-icon" onclick="supprimerCours('${nom}')" title="Supprimer">
+          <button class="btn-icon" data-supprimer="${escapeHtml(nom)}" title="Supprimer">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 4h10M6 4V3h4v1M5 4l.5 9h5L11 4"/>
             </svg>
@@ -178,6 +181,13 @@
         </div>`;
     }).join('');
   }
+
+  // Délégation : la liste est re-rendue à chaque import/suppression, inutile de
+  // recâbler les boutons à chaque fois.
+  document.getElementById('importList').addEventListener('click', e => {
+    const btn = e.target.closest('[data-supprimer]');
+    if (btn) supprimerCours(btn.dataset.supprimer);
+  });
 
   async function supprimerCours(nom) {
     if (!confirm(`Supprimer "${nom}" de la liste ?`)) return;
@@ -215,6 +225,10 @@
     return bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(0)} Ko`
       : `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   chargerListe();
