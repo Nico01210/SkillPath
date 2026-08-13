@@ -9,8 +9,14 @@ log = logging.getLogger(__name__)
  
 router = APIRouter()
  
-# Extensions de fichiers de code acceptées
-EXTENSIONS_ACCEPTEES = {".py", ".js", ".ts", ".html", ".css", ".java", ".go", ".php", ".cpp", ".c", ".rb"}
+# Extensions de fichiers de code acceptées.
+# .jsx / .tsx en font partie : le corpus contient des cours React
+# (composants_react, hooks_react), donc refuser un composant à l'analyse serait
+# incohérent avec ce que l'étudiant est censé réviser.
+EXTENSIONS_ACCEPTEES = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css",
+    ".java", ".go", ".php", ".cpp", ".c", ".rb",
+}
  
  
 @router.post("/", response_model=ScanResponse)

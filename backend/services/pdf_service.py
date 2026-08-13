@@ -2,10 +2,16 @@ import fitz  # PyMuPDF — fitz est le nom du module interne
 from pathlib import Path
  
  
-# Taille d'un chunk en nombre de mots
-# 500 mots ≈ 1 page de cours — assez de contexte pour le RAG
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50  # mots partagés entre deux chunks consécutifs
+# Taille d'un chunk en nombre de mots.
+#
+# 500 mots (≈ 1 page) semblait « assez de contexte », mais un cours entier
+# tenait alors en 2 ou 3 vecteurs : chaque vecteur moyennait toutes les notions
+# du PDF, les scores de similarité s'écrasaient tous entre 0,25 et 0,50 et le
+# même chunk fourre-tout ressortait premier sur des erreurs sans rapport.
+# 180 mots ≈ une notion — c'est la granularité qu'on veut afficher dans
+# « Cours à relire ».
+CHUNK_SIZE = 180
+CHUNK_OVERLAP = 40  # mots partagés entre deux chunks consécutifs
                     # évite de couper une explication en plein milieu
  
  

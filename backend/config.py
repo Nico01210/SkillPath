@@ -8,6 +8,12 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+
+    # Modèle d'embedding utilisé pour indexer et interroger les cours.
+    # text-embedding-3-small est multilingue : les cours et les descriptions
+    # d'erreurs sont en français, ce que all-MiniLM-L6-v2 (le défaut de Chroma,
+    # entraîné sur de l'anglais) discriminait mal.
+    embedding_model: str = "text-embedding-3-small"
     chroma_db_path: str = str(BASE_DIR / "data" / "chromadb")
     sqlite_db_path: str = str(BASE_DIR / "data" / "coach.db")
     uploads_path: str = str(BASE_DIR / "data" / "uploads")

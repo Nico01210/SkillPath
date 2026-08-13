@@ -18,9 +18,10 @@
       <polyline points="14,16 20,10 26,16"/>
     </svg>
     <p class="drop-zone-title">Dépose un fichier de code</p>
-    <p class="drop-zone-hint">.py · .js · .ts · .html · .css · .java · .go · .php · .c · .cpp · .rb · max 1 Mo</p>
-    <!-- Doit rester aligné sur EXTENSIONS_ACCEPTEES (backend/routers/scan_router.py) -->
-    <input type="file" id="fileInput" accept=".py,.js,.ts,.html,.css,.java,.go,.php,.cpp,.c,.rb">
+    <!-- extensions vient de EXTENSIONS_ACCEPTEES (backend/routers/scan_router.py),
+         injecté par main.py : une seule source de vérité, pas de recopie. -->
+    <p class="drop-zone-hint">{{ extensions | join(' · ') }} · max 1 Mo</p>
+    <input type="file" id="fileInput" accept="{{ extensions | join(',') }}">
   </div>
 </div>
 

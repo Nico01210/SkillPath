@@ -57,7 +57,15 @@ def page_import(request: Request):
  
 @app.get("/scan-code")
 def page_scan(request: Request):
-    return templates.TemplateResponse("scan.html", {"request": request, "active_page": "scan"})
+    # La liste d'extensions vient du routeur, elle n'est pas recopiée dans le
+    # template : les deux listes avaient déjà divergé une fois, le front refusant
+    # des extensions que le back acceptait.
+    extensions = sorted(scan_router.EXTENSIONS_ACCEPTEES)
+    return templates.TemplateResponse("scan.html", {
+        "request": request,
+        "active_page": "scan",
+        "extensions": extensions,
+    })
  
 @app.get("/rapport-jour")
 def page_rapport(request: Request):

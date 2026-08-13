@@ -24,7 +24,7 @@ SkillPath est une application web locale mono-utilisateur qui combine l'analyse 
 | ---------------- | ----------------------------------------------- |
 | Backend          | Python 3.12, FastAPI, Pydantic v2               |
 | IA               | OpenAI GPT-4o-mini (Structured Outputs)         |
-| RAG              | ChromaDB, all-MiniLM-L6-v2                      |
+| RAG              | ChromaDB, text-embedding-3-small                |
 | Parsing PDF      | PyMuPDF (fitz)                                  |
 | Base de données | SQLite                                          |
 | Frontend         | HTML, CSS, JavaScript vanilla, Jinja2, Chart.js |
@@ -160,7 +160,8 @@ SkillPath/
 │   └── services/
 │       ├── pdf_service.py        # Parsing et chunking PDF
 │       ├── chroma_service.py     # Embeddings et recherche vectorielle
-│       ├── rag_service.py        # Recherche de cours pertinents
+│       ├── rag_service.py        # Récupération des cours candidats
+│       ├── rerank_service.py     # Tri LLM des candidats (« aucun » possible)
 │       ├── llm_service.py        # Analyse de code via OpenAI
 │       ├── sqlite_service.py     # Persistance des analyses
 │       ├── rapport_service.py    # Génération du rapport journalier
@@ -278,14 +279,70 @@ Conséquences visibles :
 La pertinence dépend directement du **texte extractible** des PDF importés :
 
 - un cours **rédigé** (paragraphes) donne de bons résultats ;
-- un cours composé de **captures d'écran ou de slides images** produit très peu de texte,
-  donc peu de chunks et des scores de similarité sous `RELEVANCE_THRESHOLD` (0.3) —
-  les erreurs affichent alors « Aucun cours lié ».
+- un cours composé de **captures d'écran ou de slides images** produit très peu de texte
+  extractible : l'import est refusé en 422 s'il ne produit aucun chunk.
 
-Le modèle d'embedding par défaut (`all-MiniLM-L6-v2`) est **anglophone** : sur du contenu
-français, les scores sont mécaniquement plus bas. Un modèle multilingue
-(`paraphrase-multilingual-MiniLM-L12-v2`) améliorerait la pertinence, au prix d'une
-réindexation complète (`POST /import/reimporter-tout`).
+Une notion **absente du corpus** ne peut pas être rattachée : les erreurs concernées
+affichent « Aucun cours lié », ce qui est le comportement voulu. Pour qu'un cours soit
+exploitable, chaque notion doit occuper une section de 150-200 mots (l'ordre de grandeur d'un
+chunk) dont le corps répète le nom de la notion — un titre seul se perd, car le découpage
+ignore la mise en page.
+
+Les embeddings sont produits par **`text-embedding-3-small`** (OpenAI, multilingue),
+configurable via `EMBEDDING_MODEL`. Sans clé API, `chroma_service` retombe sur le modèle
+local `all-MiniLM-L6-v2` afin que le mode MOCK fonctionne hors-ligne — mais celui-ci est
+anglophone et discrimine mal des cours en français.
+
+Le nom de la collection ChromaDB **porte le modèle d'embedding** (`cours__<modèle>`) : deux
+modèles ne partagent ni la dimension des vecteurs ni le même espace sémantique, les mélanger
+donnerait des recherches absurdes. Changer `EMBEDDING_MODEL` ouvre donc une collection vide —
+l'app affiche « 0 cours indexé » jusqu'à un `POST /import/reimporter-tout`.
+
+### Récupération large, puis tri par le LLM
+
+Le rattachement d'une erreur à ses cours se fait en **deux étages** :
+
+1. **Récupération** — ChromaDB ramène jusqu'à `RECALL_N` (20) candidats au-dessus d'un
+   plancher bas, `RECALL_THRESHOLD` (0.32) ;
+2. **Tri** — `rerank_service` demande au LLM, en **un seul appel pour tout le fichier**,
+   quels extraits traitent réellement la notion en jeu, avec « aucun » comme réponse
+   légitime.
+
+Ce second étage n'est pas un raffinement : la similarité vectorielle seule **ne peut pas**
+faire ce tri, et ce n'est pas une question de réglage. Mesuré sur les cours de test, une
+erreur *sans* cours correspondant dans l'index (injection SQL, avant l'import d'un cours de
+sécurité) scorait **0.461**, quand un vrai match (`open()` sans `with` → cours sur les
+exceptions) plafonnait à **0.458**. Le bruit score plus haut que le signal : tout seuil
+unique garde forcément du faux ou jette du vrai. La similarité mesure une proximité de
+vocabulaire — « requête », « malveillant », « sécurité » rapprochent mécaniquement
+l'injection SQL d'un cours REST/GraphQL.
+
+La fenêtre de récupération est large pour la même raison : sur une erreur « pas de type
+hints », le chunk intitulé « Absence de type hints (Python) » sortait au **rang 16** (0.437),
+derrière un passage sur le God Object (0.517). On ne peut pas faire confiance au top 8 du
+classement vectoriel, donc on soumet largement et c'est le tri qui décide.
+
+Le tri procède en deux temps par erreur, imposés par le schéma de réponse : il **nomme
+d'abord** la notion à revoir (« requêtes SQL paramétrées »), puis juge chaque extrait contre
+cette notion nommée. Sans cet ancrage, le modèle jugeait « est-ce le même domaine ? » et
+retenait un passage « Sécurité : rate limit, CORS » pour une injection SQL.
+
+Mesuré sur un lot réel de 4 erreurs, 6 exécutions : **6/6 corrects** sur les quatre, y compris
+« Aucun cours lié » pour une notion absente du corpus. Avant l'import du cours de sécurité,
+l'injection SQL était rattachée à tort dans 2 cas sur 6 — c'est le signe qu'une notion non
+couverte reste le point faible du tri, et qu'importer le cours manquant vaut mieux que
+durcir le prompt.
+
+Coût : un appel `OPENAI_MODEL` supplémentaire par scan, de l'ordre de 10k tokens en entrée.
+`MAX_EXTRAITS_ENVOYES` (60) plafonne le nombre d'extraits distincts soumis ; au-delà, les
+moins bien classés sont écartés **avec un log**, pour qu'une coupe ne passe jamais pour une
+couverture complète. Si le tri échoue (pas de
+clé API, panne réseau, réponse tronquée), `rag_service` retombe sur un filtrage par
+`FALLBACK_THRESHOLD` (0.42) : dégradé — il laisse passer des rattachements faux — mais un
+tri indisponible ne fait jamais échouer un scan.
+
+Les seuils sont **étalonnés sur ce couple modèle d'embedding + `CHUNK_SIZE`** ; ils n'ont
+aucune valeur absolue et doivent être remesurés si l'un des deux change.
 
 ---
 
@@ -295,7 +352,11 @@ réindexation complète (`POST /import/reimporter-tout`).
 - Import PDF un fichier à la fois
 - Le titre d'un extrait de cours est un aperçu de son contenu, pas un vrai titre de chapitre
   (le chunking aplatit la mise en page du PDF)
-- Modèle d'embedding anglophone (voir ci-dessus)
+- Le RAG ne peut relier une erreur qu'à un cours **présent dans l'index** : une faille de
+  sécurité détectée sans cours de sécurité importé affiche « Aucun cours lié » (c'est le
+  comportement voulu, pas un bug — voir le tri ci-dessus)
+- Le tri des cours ajoute ~1-2 s de latence par scan
+- Sans clé API, les embeddings retombent sur un modèle local anglophone (voir ci-dessus)
 - Le dashboard est une fenêtre glissante de 7 ou 30 jours ; l'`offset` (période précédente)
   existe côté API mais n'est pas exposé dans l'interface
 - Pas de tests d'intégration (ChromaDB, OpenAI)

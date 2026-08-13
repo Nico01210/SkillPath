@@ -45,7 +45,13 @@ async def importer_pdf(fichier: UploadFile = File(...)):
             # 3. Extrait le texte et découpe en chunks
             resultat = pdf_service.traiter_pdf(contenu, fichier.filename)
 
-            # 4. Stocke les chunks dans ChromaDB (embed + sauvegarde)
+            # 4. Stocke les chunks dans ChromaDB (embed + sauvegarde).
+            #    On purge d'abord les chunks existants de ce fichier : stocker_chunks
+            #    fait un upsert par id, donc réimporter un PDF qui produit moins de
+            #    chunks qu'avant (PDF raccourci, ou CHUNK_SIZE modifié) laisserait
+            #    la queue des anciens vecteurs dans l'index, rattachable à des
+            #    erreurs alors qu'elle ne correspond plus au cours.
+            chroma_service.supprimer_chunks(_safe_filename(fichier.filename))
             nb_stockes = chroma_service.stocker_chunks(resultat["chunks"])
         except Exception:
             # Le fichier ne doit pas rester orphelin si l'indexation échoue
@@ -157,6 +163,10 @@ async def reimporter_tout():
                 contenu = f.read()
  
             resultat = pdf_service.traiter_pdf(contenu, nom_fichier)
+            # Purge avant réécriture — voir le commentaire dans importer_pdf :
+            # une réindexation avec un CHUNK_SIZE plus grand laisserait sinon des
+            # vecteurs orphelins issus du découpage précédent.
+            chroma_service.supprimer_chunks(nom_fichier)
             nb = chroma_service.stocker_chunks(resultat["chunks"])
             resultats.append({"fichier": nom_fichier, "chunks": nb, "statut": "ok"})
  

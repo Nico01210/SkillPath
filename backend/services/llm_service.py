@@ -188,10 +188,14 @@ def _enrichir_avec_rag(erreurs_brutes: list[dict], filename: str) -> list[Erreur
     Prend les erreurs détectées (mock ou OpenAI) et ajoute les cours pertinents
     depuis ChromaDB via rag_service.
     """
+    # Rattachement groupé : un seul appel de tri pour tout le fichier, au lieu
+    # d'un par erreur.
+    cours_par_erreur = rag_service.rattacher_cours(
+        [e["description"] for e in erreurs_brutes]
+    )
+
     erreurs = []
-    for e in erreurs_brutes:
-        cours = rag_service.trouver_cours_pertinents(e["description"])
- 
+    for e, cours in zip(erreurs_brutes, cours_par_erreur):
         erreurs.append(Erreur(
             niveau=e["niveau"],
             titre=e["titre"],

@@ -1,12 +1,53 @@
 import chromadb
 import functools
+import logging
+import re
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
 from backend.config import settings
 
 
-# Nom de la collection ChromaDB — comme une table en SQL
-COLLECTION_NAME = "cours"
+log = logging.getLogger(__name__)
+
+
+def _embedding_fn():
+    """
+    Embeddings OpenAI si une clé est disponible, sinon repli sur le modèle local
+    de Chroma (all-MiniLM-L6-v2) pour que le mode MOCK reste utilisable
+    hors-ligne. Le local est nettement moins bon sur du français : c'est un
+    filet de sécurité, pas la configuration cible.
+    """
+    if settings.openai_api_key:
+        return embedding_functions.OpenAIEmbeddingFunction(
+            api_key=settings.openai_api_key,
+            model_name=settings.embedding_model,
+        )
+
+    log.warning(
+        "Embeddings — pas de clé OpenAI : repli sur le modèle local "
+        "(qualité dégradée sur les cours en français)."
+    )
+    return embedding_functions.DefaultEmbeddingFunction()
+
+
+def _collection_name() -> str:
+    """
+    Nom de la collection ChromaDB — comme une table en SQL.
+
+    Le nom porte le modèle d'embedding parce que deux modèles ne produisent ni
+    la même dimension de vecteur ni le même espace sémantique : mélanger leurs
+    vecteurs dans une collection donne, au mieux, une erreur de dimension et,
+    au pire, des recherches silencieusement absurdes. Changer de modèle ouvre
+    donc une collection vide — l'app affiche « 0 cours indexé » et un
+    /import/reimporter-tout reconstruit l'index proprement.
+    """
+    if not settings.openai_api_key:
+        return "cours__local_minilm"
+    # Les noms de collection Chroma n'acceptent que [a-zA-Z0-9._-]
+    slug = re.sub(r"[^a-zA-Z0-9._-]", "_", settings.embedding_model)
+    return f"cours__{slug}"
+
+
 def chunk_id(source: str, index: int) -> str:
     return f"{source}__chunk_{index}"
 
@@ -16,13 +57,12 @@ def get_collection():
         path=settings.chroma_db_path,
         settings=ChromaSettings(anonymized_telemetry=False),
     )
-    embedding_fn = embedding_functions.DefaultEmbeddingFunction()
     return client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=embedding_fn,
+        name=_collection_name(),
+        embedding_function=_embedding_fn(),
         metadata={"hnsw:space": "cosine"}
     )
- 
+
 def stocker_chunks(chunks: list[dict]) -> int:
     """
     Stocke une liste de chunks dans ChromaDB.
