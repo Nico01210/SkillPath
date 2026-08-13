@@ -136,6 +136,20 @@ Règles strictes :
 - Adapte ton analyse au langage détecté (Python, Java, PHP, JS, JSX...)
 - N'ignore que le cosmétique : nommage de variables simples, commentaires
   manquants, mise en forme.
+- Deux exigences de justesse, plus importantes que le nombre de constats. Un
+  étudiant en reconversion ne peut pas savoir qu'un constat est faux : il
+  corrigera un non-problème ou retiendra une règle inexistante, et un seul
+  constat visiblement erroné lui fait douter de tous les autres.
+  1. Le problème doit être DÉMONTRABLE sur le code cité. Avant de retenir une
+     erreur, vérifie qu'elle se produit vraiment ici. Exemple à ne pas commettre :
+     annoncer qu'itérer sur le résultat de `fetchall()` échoue si la table est
+     vide — parcourir une liste vide ne lève rien.
+  2. Un avertissement doit reposer sur une règle OBJECTIVE, pas sur une
+     préférence. « Ce nom serait plus clair », « une structure de données serait
+     plus flexible », « ce serait mieux organisé » ne sont pas des erreurs : ne
+     les signale pas.
+  Dans le doute sur une faille de sécurité, un bug ou une ressource non libérée,
+  signale. Dans le doute sur du confort ou du style, tais-toi.
 - Les erreurs d'idiome comptent autant que les bugs, ne les saute pas :
   mutation d'un tableau pendant son itération, `forEach` + `push` au lieu de
   `map`/`reduce`, `sort()` qui mute la source, `await` dans une boucle au lieu de
@@ -209,8 +223,7 @@ def _enrichir_avec_rag(erreurs_brutes: list[dict], filename: str) -> list[Erreur
     Prend les erreurs détectées (mock ou OpenAI) et ajoute les cours pertinents
     depuis ChromaDB via rag_service.
     """
-    # Rattachement groupé : un seul appel de tri pour tout le fichier, au lieu
-    # d'un par erreur.
+
     cours_par_erreur = rag_service.rattacher_cours(
         [e["description"] for e in erreurs_brutes]
     )

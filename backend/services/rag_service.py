@@ -1,5 +1,15 @@
 from backend.models.schemas import CoursLie
 from backend.services import chroma_service, rerank_service
+from concurrent.futures import ThreadPoolExecutor
+
+import logging
+
+
+log = logging.getLogger(__name__)
+
+# Tranches de tri lancées simultanément. Plafonné pour ne pas ouvrir dix
+# requêtes d'un coup vers l'API sur un fichier très fourni.
+MAX_TRIS_PARALLELES = 4
 
 # Le rattachement d'une erreur à ses cours se fait en deux temps :
 # récupération large ici, puis tri par le LLM dans rerank_service.
@@ -20,6 +30,22 @@ RECALL_N = 20
 # Plancher de récupération — délibérément bas. Mieux vaut soumettre un candidat
 # de trop au trieur, qui sait dire non, que de l'écarter ici sans recours.
 RECALL_THRESHOLD = 0.32
+
+# Nombre d'erreurs jugées par appel de tri.
+#
+# Un seul appel pour tout le fichier semblait économique — les mêmes chunks
+# remontent sur plusieurs erreurs, les mutualiser divise le coût. Mais sur un
+# fichier à 8 erreurs, la récupération produit ~78 extraits distincts : le
+# modèle jugeait alors 8 erreurs contre 60 extraits (le plafond) en une passe,
+# et rejetait presque tout — 7 constats sur 8 se retrouvaient sans cours.
+# Par petits groupes, chaque appel voit peu d'erreurs et peu d'extraits, dans les
+# conditions où le tri est fiable.
+#
+# 2 et non 3 : les tranches partent en parallèle, donc le scan dure le temps de
+# la plus lente. Des tranches plus petites sont plus rapides à la fois en entrée
+# (moins d'extraits à lire) et en sortie (moins de jugements à rédiger), et la
+# qualité du tri ne peut qu'y gagner puisque c'est la dilution qui le dégradait.
+GROUPE_TRI = 2
 
 # Seuil utilisé UNIQUEMENT quand le tri LLM est indisponible (mode MOCK, panne
 # réseau). Filet de sécurité dégradé : il laisse passer des rattachements faux,
@@ -76,8 +102,8 @@ def rattacher_cours(descriptions_erreurs: list[str]) -> list[list[CoursLie]]:
         → les extraits sur la responsabilité unique (SRP), même si « SRP »
           n'apparaît pas dans la description
 
-    Le tri se fait en un seul appel LLM pour tout le fichier : les mêmes chunks
-    remontent sur plusieurs erreurs, les mutualiser divise le coût.
+    Le tri se fait par groupes de GROUPE_TRI erreurs, pas en un bloc : voir le
+    commentaire de cette constante.
     """
     if chroma_service.compter_chunks() == 0 or not descriptions_erreurs:
         return [[] for _ in descriptions_erreurs]
@@ -93,17 +119,43 @@ def rattacher_cours(descriptions_erreurs: list[str]) -> list[list[CoursLie]]:
     ]
 
     # 2. Tri par le LLM — le seul étage capable de répondre « aucun ».
-    retenus = rerank_service.filtrer(descriptions_erreurs, candidats)
+    tranches = [
+        (descriptions_erreurs[i:i + GROUPE_TRI], candidats[i:i + GROUPE_TRI])
+        for i in range(0, len(descriptions_erreurs), GROUPE_TRI)
+    ]
 
-    # 3. Repli si le tri est indisponible : filtrage par seuil, dégradé mais
-    #    jamais bloquant.
-    if retenus is None:
-        retenus = [
-            [r for r in cands if r["score"] >= FALLBACK_THRESHOLD][
-                : rerank_service.MAX_COURS_PAR_ERREUR
+    def _trier(tranche: tuple[list[str], list[list[dict]]]) -> list[list[dict]]:
+        tranche_desc, tranche_cand = tranche
+        try:
+            tri = rerank_service.filtrer(tranche_desc, tranche_cand)
+        except Exception:
+            # filtrer() attrape déjà les erreurs OpenAI ; ce filet couvre
+            # l'imprévu, pour qu'une tranche en échec ne fasse pas tomber le scan.
+            log.exception("Tri d'une tranche en echec — repli sur le seuil")
+            tri = None
+
+        # 3. Repli si le tri est indisponible : filtrage par seuil, dégradé mais
+        #    jamais bloquant. Il ne concerne que la tranche qui a échoué.
+        if tri is None:
+            tri = [
+                [r for r in cands if r["score"] >= FALLBACK_THRESHOLD][
+                    : rerank_service.MAX_COURS_PAR_ERREUR
+                ]
+                for cands in tranche_cand
             ]
-            for cands in candidats
-        ]
+        return tri
+
+    # Les tranches sont indépendantes, et le temps passé est de l'attente réseau :
+    # les enchaîner coûtait ~9 s par tranche, soit 27 s sur un fichier à 8 erreurs.
+    # En parallèle, la durée devient celle de la tranche la plus lente.
+    # executor.map préserve l'ordre des tranches, donc celui des erreurs.
+    if len(tranches) == 1:
+        resultats = [_trier(tranches[0])]
+    else:
+        with ThreadPoolExecutor(max_workers=min(len(tranches), MAX_TRIS_PARALLELES)) as executor:
+            resultats = list(executor.map(_trier, tranches))
+
+    retenus = [erreur for tri in resultats for erreur in tri]
 
     return [[_en_cours_lie(r) for r in cands] for cands in retenus]
  
