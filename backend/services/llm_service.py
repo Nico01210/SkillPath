@@ -121,13 +121,29 @@ def _openai_analyser(contenu: str, filename: str) -> list[Erreur]:
 Ton rôle : analyser le code fourni et identifier les erreurs et mauvaises pratiques les plus importantes.
 
 Règles strictes :
-- Retourne entre 2 et 6 erreurs maximum — priorise les plus impactantes
-- "critique" = bug potentiel, faille de sécurité, violation grave d'une convention
+- Signale TOUTES les erreurs distinctes que tu trouves, jusqu'à 8. Ne t'arrête pas
+  après une ou deux : un fichier soumis à l'analyse en contient couramment 5 ou 6,
+  et en manquer donne à l'étudiant l'impression que son code est sain.
+- Une erreur = une cause. Jamais deux entrées pour la même ligne ou le même
+  problème sous deux angles : « fetch sans await » et « promesse non retournée »
+  sur le même appel, c'est UNE erreur, pas deux.
+- "critique" = bug potentiel, faille de sécurité, perte de données silencieuse,
+  mutation d'état React, requête SQL non paramétrée. Un vrai bug reste critique
+  même si le correctif est simple.
 - "avertissement" = mauvaise pratique, lisibilité, maintenabilité
 - La description doit expliquer POURQUOI c'est un problème ET comment le corriger, en termes simples
 - L'extrait doit être le code fautif exact (pas le code corrigé)
-- Adapte ton analyse au langage détecté (Python, Java, PHP, JS...)
-- Ignore les erreurs triviales (nommage de variables simples, commentaires manquants)
+- Adapte ton analyse au langage détecté (Python, Java, PHP, JS, JSX...)
+- N'ignore que le cosmétique : nommage de variables simples, commentaires
+  manquants, mise en forme.
+- Les erreurs d'idiome comptent autant que les bugs, ne les saute pas :
+  mutation d'un tableau pendant son itération, `forEach` + `push` au lieu de
+  `map`/`reduce`, `sort()` qui mute la source, `await` dans une boucle au lieu de
+  `Promise.all`, `fetch` sans vérifier `.ok`, exception trop générale, message
+  d'erreur exposant les internes, valeur `None`/`undefined` non vérifiée,
+  dépendance manquante dans `useEffect`, absence de cleanup, `key={index}`,
+  état dérivé stocké au lieu d'être calculé, absence d'annotations de type,
+  signature à plus de 4 paramètres.
 - Priorise ce qui compte pour le métier visé par l'étudiant (indiqué en tête du
   message) et calibre ton vocabulaire sur son niveau
 
@@ -151,8 +167,13 @@ Réponds au format défini par le schéma JSON fourni."""
                 {"role": "system", "content": prompt_systeme},
                 {"role": "user", "content": prompt_utilisateur}
             ],
-            max_tokens=2000,
-            temperature=0.2,  # 0.2 = réponses cohérentes, peu créatives — bon pour l'analyse
+            # 3000 et non 2000 : jusqu'à 8 erreurs décrites, un plafond trop bas
+            # tronque le JSON et fait échouer le scan en 422 (voir finish_reason).
+            max_tokens=3000,
+            # 0 et non 0.2 : à 0.2, le même fichier donnait 5 erreurs à un scan et
+            # 1 au suivant. L'analyse est une tâche d'extraction, la variabilité
+            # n'y apporte rien et rend l'outil peu crédible pour l'étudiant.
+            temperature=0,
             response_format={"type": "json_schema", "json_schema": SCHEMA_ERREURS}
         )
     except RateLimitError as exc:
