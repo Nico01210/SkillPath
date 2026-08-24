@@ -350,12 +350,9 @@ aucune valeur absolue et doivent être remesurés si l'un des deux change.
 
 - Application mono-utilisateur locale — pas d'authentification
 - Import PDF un fichier à la fois
+- Scanne de plusieurs fichiers de code (dossier .zip ou repo entier)
 - Le titre d'un extrait de cours est un aperçu de son contenu, pas un vrai titre de chapitre
   (le chunking aplatit la mise en page du PDF)
-- Le RAG ne peut relier une erreur qu'à un cours **présent dans l'index** : une faille de
-  sécurité détectée sans cours de sécurité importé affiche « Aucun cours lié » (c'est le
-  comportement voulu, pas un bug — voir le tri ci-dessus)
-- Le tri des cours ajoute ~1-2 s de latence par scan
 - Sans clé API, les embeddings retombent sur un modèle local anglophone (voir ci-dessus)
 - Le dashboard est une fenêtre glissante de 7 ou 30 jours ; l'`offset` (période précédente)
   existe côté API mais n'est pas exposé dans l'interface

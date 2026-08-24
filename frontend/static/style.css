@@ -373,6 +373,18 @@ body {
 
 .form-input:focus { outline: none; border-color: var(--blue); }
 
+/* Le formulaire ne doit pas hériter du pre-wrap de .cours-modal-body */
+#profilForm {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#profilForm .form-input { margin-bottom: 12px; }
+#profilForm .form-input:last-of-type { margin-bottom: 0; }
+#profilForm .btn { align-self: flex-start; margin-top: 8px; }
+
 /* ── Buttons ─────────────────────────────────────── */
 .btn {
   display: inline-flex;
