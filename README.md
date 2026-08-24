@@ -23,7 +23,7 @@ SkillPath est une application web locale mono-utilisateur qui combine l'analyse 
 | Couche           | Technologie                                     |
 | ---------------- | ----------------------------------------------- |
 | Backend          | Python 3.12, FastAPI, Pydantic v2               |
-| IA               | OpenAI GPT-4o-mini (Structured Outputs)         |
+| IA               | OpenAI GPT-4o(Structured Outputs)               |
 | RAG              | ChromaDB, text-embedding-3-small                |
 | Parsing PDF      | PyMuPDF (fitz)                                  |
 | Base de données | SQLite                                          |
@@ -90,7 +90,7 @@ cp .env.example .env
 
 ```env
 OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-4o
 ```
 
 > Sans clé API (ou `OPENAI_API_KEY` vide), l'app démarre en **mode mock** — des erreurs fictives
@@ -201,25 +201,25 @@ SkillPath/
 
 Toutes les routes API sont documentées et testables sur [http://localhost:8000/docs](http://localhost:8000/docs).
 
-| Méthode  | Endpoint                    | Description                                                 |
-| -------- | --------------------------- | ----------------------------------------------------------- |
-| `GET`    | `/health`                   | Vérifie que le serveur tourne                               |
-| `POST`   | `/import/`                  | Importe un PDF de cours                                     |
-| `GET`    | `/import/liste`             | Liste les cours importés                                    |
-| `GET`    | `/import/chunk`             | Récupère un extrait (chunk) d'un cours                      |
-| `DELETE` | `/import/{nom_fichier}`     | Supprime un cours importé                                   |
-| `POST`   | `/import/reimporter-tout`   | Réindexe tous les cours                                     |
-| `POST`   | `/scan/`                    | Analyse un fichier de code                                  |
-| `GET`    | `/rapport/`                 | Rapport du jour                                             |
-| `GET`    | `/rapport/hier`             | Rapport d'hier (pour les deltas)                            |
-| `GET`    | `/rapport/dates`            | Liste des dates ayant un rapport                            |
-| `GET`    | `/rapport/export`           | Export HTML du rapport                                      |
-| `GET`    | `/stats/dashboard`          | Stats de progression (`?periode=semaine\|mois&offset=0\|1`) |
-| `GET`    | `/resolutions/`             | Liste les erreurs marquées comme résolues                   |
-| `PUT`    | `/resolutions/{signature}`  | Marque une erreur comme résolue                             |
-| `DELETE` | `/resolutions/{signature}`  | Annule une résolution                                       |
-| `GET`    | `/profil/`                  | Récupère le profil (métier visé, niveau)                    |
-| `PUT`    | `/profil/`                  | Met à jour le profil                                        |
+| Méthode   | Endpoint                     | Description                                                 |
+| ---------- | ---------------------------- | ----------------------------------------------------------- |
+| `GET`    | `/health`                  | Vérifie que le serveur tourne                              |
+| `POST`   | `/import/`                 | Importe un PDF de cours                                     |
+| `GET`    | `/import/liste`            | Liste les cours importés                                   |
+| `GET`    | `/import/chunk`            | Récupère un extrait (chunk) d'un cours                    |
+| `DELETE` | `/import/{nom_fichier}`    | Supprime un cours importé                                  |
+| `POST`   | `/import/reimporter-tout`  | Réindexe tous les cours                                    |
+| `POST`   | `/scan/`                   | Analyse un fichier de code                                  |
+| `GET`    | `/rapport/`                | Rapport du jour                                             |
+| `GET`    | `/rapport/hier`            | Rapport d'hier (pour les deltas)                            |
+| `GET`    | `/rapport/dates`           | Liste des dates ayant un rapport                            |
+| `GET`    | `/rapport/export`          | Export HTML du rapport                                      |
+| `GET`    | `/stats/dashboard`         | Stats de progression (`?periode=semaine\|mois&offset=0\|1`) |
+| `GET`    | `/resolutions/`            | Liste les erreurs marquées comme résolues                 |
+| `PUT`    | `/resolutions/{signature}` | Marque une erreur comme résolue                            |
+| `DELETE` | `/resolutions/{signature}` | Annule une résolution                                      |
+| `GET`    | `/profil/`                 | Récupère le profil (métier visé, niveau)                |
+| `PUT`    | `/profil/`                 | Met à jour le profil                                       |
 
 Pages frontend : `/` (ou `/import-cours`), `/scan-code`, `/rapport-jour`, `/dashboard`.
 
@@ -247,7 +247,7 @@ pytest tests/ -v
 | Variable           | Description         | Défaut                    |
 | ------------------ | ------------------- | -------------------------- |
 | `OPENAI_API_KEY` | Clé API OpenAI     | `""` (mode mock si vide) |
-| `OPENAI_MODEL`   | Modèle OpenAI      | `gpt-4o-mini`            |
+| `OPENAI_MODEL`   | Modèle OpenAI      | `gpt-4o`                 |
 | `CHROMA_DB_PATH` | Chemin ChromaDB     | `data/chromadb`          |
 | `SQLITE_DB_PATH` | Chemin SQLite       | `data/coach.db`          |
 | `UPLOADS_PATH`   | Chemin uploads      | `data/uploads`           |

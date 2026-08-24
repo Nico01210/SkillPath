@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-4o"
 
     # Modèle d'embedding utilisé pour indexer et interroger les cours.
     # text-embedding-3-small est multilingue : les cours et les descriptions
