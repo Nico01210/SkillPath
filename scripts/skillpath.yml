@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════
+# SkillPath — configuration de la revue automatique
+#
+# À placer à la racine du dépôt à analyser.
+# Lu par le hook Git pre-push, et par le workflow CI en V2.
+# ═══════════════════════════════════════════════════
+
+# URL de l'instance SkillPath.
+# En local, l'application tourne sur le poste de l'étudiant.
+# En V2 hébergée, remplacer par l'URL de l'instance partagée.
+url: http://localhost:8000
+
+# Mode de déclenchement de la revue
+#   auto    : la revue se lance à chaque push, sans intervention
+#   manuel  : la revue ne se lance que si SKILLPATH=1 est présent
+#             exemple : SKILLPATH=1 git push
+#   off     : le hook ne fait rien — désactivation sans désinstallation
+mode: auto
+
+# Extensions de fichiers soumises à la revue
+extensions:
+  - .py
+  - .js
+  - .ts
+  - .jsx
+  - .java
+
+# Chemins ignorés (correspondance sur le début du chemin)
+ignore:
+  - tests/
+  - migrations/
+  - node_modules/
+  - .venv/
+
+# Bloquer le push si des erreurs critiques sont détectées
+#   true  : le push est refusé, l'étudiant corrige puis repousse
+#   false : les erreurs sont affichées mais le push passe
+bloquer_si_critique: false
+
+# Nombre maximum de fichiers analysés par push.
+# Garde-fou : évite de déclencher des dizaines d'appels API
+# sur un commit de refactoring massif.
+max_fichiers: 5

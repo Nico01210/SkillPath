@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+"""
+Hook Git pre-push — revue de code automatique via SkillPath.
+
+Avant chaque push, les fichiers de code modifiés sont envoyés à l'instance
+SkillPath locale, qui les analyse et renvoie les erreurs détectées ainsi que
+les chapitres de cours correspondants.
+
+Installation :
+    cp scripts/pre-push .git/hooks/pre-push
+    chmod +x .git/hooks/pre-push
+    cp scripts/.skillpath.yml .skillpath.yml
+
+Le comportement est piloté par .skillpath.yml à la racine du dépôt.
+
+Principe de conception : le hook ne bloque jamais par accident. Si SkillPath
+n'est pas lancé, si la configuration est absente ou si le script échoue, le
+push passe. La revue est une aide au développeur, pas un obstacle.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+# Valeurs appliquées si .skillpath.yml est absent ou incomplet.
+CONFIG_PAR_DEFAUT = {
+    "url": "http://localhost:8000",
+    "mode": "auto",
+    "extensions": [".py", ".js", ".ts", ".jsx", ".java"],
+    "ignore": [],
+    "bloquer_si_critique": False,
+    "max_fichiers": 5,
+}
+
+# Délai maximal d'un appel à SkillPath, en secondes.
+# L'analyse passe par un LLM : quelques dizaines de secondes sont normales.
+TIMEOUT_SCAN = 60
+
+# Codes ANSI — la sortie s'affiche dans le terminal de l'étudiant.
+ROUGE = "\033[31m"
+ORANGE = "\033[33m"
+VERT = "\033[32m"
+GRIS = "\033[90m"
+GRAS = "\033[1m"
+RESET = "\033[0m"
+
+
+def racine_depot() -> Path:
+    """Retourne la racine du dépôt Git courant."""
+    sortie = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True, check=True
+    )
+    return Path(sortie.stdout.strip())
+
+
+def charger_config(racine: Path) -> dict:
+    """
+    Charge .skillpath.yml, avec repli sur les valeurs par défaut.
+
+    PyYAML n'est pas garanti présent dans l'environnement qui exécute le hook.
+    Le format de configuration étant plat, un parseur minimal suffit et évite
+    d'imposer une installation de dépendance avant de pouvoir pousser.
+
+    Args:
+        racine: La racine du dépôt Git.
+
+    Returns:
+        La configuration effective, valeurs par défaut comprises.
+    """
+    chemin = racine / ".skillpath.yml"
+    if not chemin.exists():
+        return dict(CONFIG_PAR_DEFAUT)
+
+    config = dict(CONFIG_PAR_DEFAUT)
+    cle_liste = None
+
+    for ligne_brute in chemin.read_text(encoding="utf-8").splitlines():
+        ligne = ligne_brute.split("#")[0].rstrip()
+        if not ligne.strip():
+            continue
+
+        # Élément de liste rattaché à la clé précédente
+        if ligne.lstrip().startswith("- ") and cle_liste:
+            config[cle_liste].append(ligne.lstrip()[2:].strip())
+            continue
+
+        if ":" not in ligne:
+            continue
+
+        cle, _, valeur = ligne.partition(":")
+        cle, valeur = cle.strip(), valeur.strip()
+
+        if not valeur:
+            # Clé sans valeur : une liste suit
+            cle_liste = cle
+            config[cle] = []
+        elif valeur.lower() in ("true", "false"):
+            config[cle] = valeur.lower() == "true"
+            cle_liste = None
+        elif valeur.isdigit():
+            config[cle] = int(valeur)
+            cle_liste = None
+        else:
+            config[cle] = valeur.strip("\"'")
+            cle_liste = None
+
+    return config
+
+
+def fichiers_modifies() -> list[str]:
+    """
+    Retourne les fichiers ajoutés ou modifiés dans les commits non poussés.
+
+    Le filtre --diff-filter=ACM exclut les suppressions et les renommages purs,
+    qui n'ont rien à faire relire.
+
+    Returns:
+        Les chemins relatifs à la racine du dépôt.
+    """
+    try:
+        # @{push} désigne la position distante de la branche courante
+        sortie = subprocess.run(
+            ["git", "diff", "--name-only", "--diff-filter=ACM", "@{push}..HEAD"],
+            capture_output=True, text=True, check=True
+        )
+        return sortie.stdout.splitlines()
+    except subprocess.CalledProcessError:
+        # Branche sans amont configuré : on retombe sur le dernier commit
+        sortie = subprocess.run(
+            ["git", "diff", "--name-only", "--diff-filter=ACM", "HEAD~1..HEAD"],
+            capture_output=True, text=True
+        )
+        return sortie.stdout.splitlines()
+
+
+def filtrer_fichiers(fichiers: list[str], config: dict) -> list[str]:
+    """
+    Ne garde que les fichiers concernés par la revue.
+
+    Args:
+        fichiers: Les chemins issus de fichiers_modifies().
+        config: La configuration chargée.
+
+    Returns:
+        Les chemins retenus, plafonnés à max_fichiers.
+    """
+    extensions = tuple(config["extensions"])
+    ignores = tuple(config["ignore"])
+
+    retenus = [
+        chemin for chemin in fichiers
+        if chemin.endswith(extensions) and not chemin.startswith(ignores)
+    ]
+    return retenus[: config["max_fichiers"]]
+
+
+def construire_corps_multipart(chemin: Path, frontiere: str) -> bytes:
+    """
+    Assemble un corps multipart/form-data pour l'upload du fichier.
+
+    Construit à la main plutôt qu'avec requests : le hook doit fonctionner
+    sans aucune dépendance externe installée.
+
+    Args:
+        chemin: Le fichier à envoyer.
+        frontiere: La chaîne de séparation multipart.
+
+    Returns:
+        Le corps de la requête, prêt à être envoyé.
+    """
+    entete = (
+        f"--{frontiere}\r\n"
+        f'Content-Disposition: form-data; name="fichier"; filename="{chemin.name}"\r\n'
+        f"Content-Type: text/plain\r\n\r\n"
+    )
+    return b"".join([
+        entete.encode(),
+        chemin.read_bytes(),
+        f"\r\n--{frontiere}--\r\n".encode(),
+    ])
+
+
+def scanner(url: str, chemin: Path) -> dict | None:
+    """
+    Envoie un fichier à SkillPath et retourne la réponse désérialisée.
+
+    Args:
+        url: L'URL de base de l'instance SkillPath.
+        chemin: Le fichier à analyser.
+
+    Returns:
+        La réponse de l'API, ou None si l'instance n'est pas joignable.
+        L'absence de SkillPath ne doit jamais empêcher un push.
+    """
+    frontiere = "----SkillPathBoundary"
+    requete = urllib.request.Request(
+        url.rstrip("/") + "/scan/",
+        data=construire_corps_multipart(chemin, frontiere),
+        headers={"Content-Type": f"multipart/form-data; boundary={frontiere}"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(requete, timeout=TIMEOUT_SCAN) as reponse:
+            return json.loads(reponse.read())
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        return None
+
+
+def compter_critiques(erreurs: list[dict]) -> int:
+    """Retourne le nombre d'erreurs de niveau critique."""
+    return sum(1 for erreur in erreurs if erreur["niveau"] == "critique")
+
+
+def afficher_resultat(fichier: str, erreurs: list[dict]) -> None:
+    """
+    Affiche le résultat de l'analyse d'un fichier dans le terminal.
+
+    Args:
+        fichier: Le chemin du fichier analysé.
+        erreurs: Les erreurs retournées par SkillPath.
+    """
+    if not erreurs:
+        print(f"  {VERT}OK{RESET}  {fichier} {GRIS}— aucun problème détecté{RESET}")
+        return
+
+    critiques = compter_critiques(erreurs)
+    avertissements = len(erreurs) - critiques
+
+    resume = []
+    if critiques:
+        resume.append(f"{ROUGE}{critiques} critique(s){RESET}")
+    if avertissements:
+        resume.append(f"{ORANGE}{avertissements} avertissement(s){RESET}")
+
+    print(f"  {GRAS}{fichier}{RESET} — {' · '.join(resume)}")
+
+    for erreur in erreurs:
+        est_critique = erreur["niveau"] == "critique"
+        couleur = ROUGE if est_critique else ORANGE
+        libelle = "CRITIQUE" if est_critique else "AVERTISSEMENT"
+
+        print(f"    {couleur}{libelle}{RESET}  {erreur['titre']}  {GRIS}ligne {erreur['ligne']}{RESET}")
+        print(f"      {GRIS}{erreur['description']}{RESET}")
+
+        for cours in erreur.get("cours", []):
+            print(f"      {GRIS}→ à relire : {cours['titre']}{RESET}")
+    print()
+
+
+def revue_desactivee(config: dict) -> bool:
+    """
+    Indique si la revue doit être ignorée pour ce push.
+
+    Args:
+        config: La configuration chargée.
+
+    Returns:
+        True si le mode est off, ou si le mode est manuel sans SKILLPATH=1.
+    """
+    mode = config["mode"]
+    if mode == "off":
+        return True
+    return mode == "manuel" and os.environ.get("SKILLPATH") != "1"
+
+
+def main() -> int:
+    racine = racine_depot()
+    config = charger_config(racine)
+
+    if revue_desactivee(config):
+        return 0
+
+    fichiers = filtrer_fichiers(fichiers_modifies(), config)
+    if not fichiers:
+        return 0
+
+    print(f"\n{GRAS}SkillPath{RESET} {GRIS}— revue de {len(fichiers)} fichier(s){RESET}\n")
+
+    total_critiques = 0
+
+    for fichier in fichiers:
+        chemin = racine / fichier
+        if not chemin.exists():
+            continue
+
+        resultat = scanner(config["url"], chemin)
+
+        if resultat is None:
+            print(f"  {GRIS}SkillPath n'est pas joignable sur {config['url']} — revue ignorée.{RESET}")
+            print(f"  {GRIS}Démarrer l'application avec : uvicorn main:app{RESET}\n")
+            return 0
+
+        erreurs = resultat.get("erreurs", [])
+        total_critiques += compter_critiques(erreurs)
+        afficher_resultat(fichier, erreurs)
+
+    if total_critiques and config["bloquer_si_critique"]:
+        print(f"{ROUGE}{GRAS}Push refusé{RESET} — {total_critiques} erreur(s) critique(s) à corriger.")
+        print(f"{GRIS}Pour pousser malgré tout : git push --no-verify{RESET}\n")
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as exc:
+        # Un hook qui plante ne doit jamais bloquer le travail de l'étudiant.
+        print(f"{GRIS}SkillPath — revue ignorée ({exc}){RESET}")
+        sys.exit(0)
