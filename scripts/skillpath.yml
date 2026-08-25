@@ -19,11 +19,19 @@ mode: auto
 
 # Extensions de fichiers soumises à la revue
 extensions:
-  - .py
-  - .js
-  - .ts
-  - .jsx
+  - .c
+  - .cpp
+  - .css
+  - .go
+  - .html
   - .java
+  - .js
+  - .jsx
+  - .php
+  - .py
+  - .rb
+  - .ts
+  - .tsx
 
 # Chemins ignorés (correspondance sur le début du chemin)
 ignore:
