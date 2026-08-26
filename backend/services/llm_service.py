@@ -145,8 +145,7 @@ pour le même problème vu sous deux angles, ex. « fetch sans await » et
   source, `await` dans une boucle au lieu de `Promise.all`, `fetch` sans
   vérifier `.ok`, dépendance manquante dans `useEffect`, absence de cleanup,
   `key={index}`, état dérivé stocké au lieu d'être calculé, signature à plus
-  de 4 paramètres
-
+  de 4 paramètres.
 À NE JAMAIS SIGNALER :
 - Préférences stylistiques, suggestions « on pourrait aussi », « il serait
   préférable de »
@@ -188,38 +187,52 @@ Réponds au format défini par le schéma JSON fourni."""
 {bloc_cours}Code à analyser :
 {contenu}"""
 
-    try:
-        reponse = client.chat.completions.create(
-            model=settings.openai_model,
-            messages=[
-                {"role": "system", "content": prompt_systeme},
-                {"role": "user", "content": prompt_utilisateur}
-            ],
-            # 3000 et non 2000 : jusqu'à 8 erreurs décrites, un plafond trop bas
-            # tronque le JSON et fait échouer le scan en 422 (voir finish_reason).
-            max_tokens=3000,
-            # 0 et non 0.2 : à 0.2, le même fichier donnait 5 erreurs à un scan et
-            # 1 au suivant. L'analyse est une tâche d'extraction, la variabilité
-            # n'y apporte rien et rend l'outil peu crédible pour l'étudiant.
-            temperature=0,
-            response_format={"type": "json_schema", "json_schema": SCHEMA_ERREURS}
-        )
-    except RateLimitError as exc:
-        # 429 insufficient_quota : billing/quota OpenAI, pas un bug applicatif —
-        # message explicite plutôt qu'une 500 « Erreur interne » trompeuse.
-        raise ValueError(
-            "Quota OpenAI dépassé. Vérifie ton plan et ta facturation sur "
-            "platform.openai.com."
-        ) from exc
-    except AuthenticationError as exc:
-        raise ValueError("Clé API OpenAI invalide ou manquante.") from exc
-    except APIConnectionError as exc:
-        raise ValueError("Impossible de joindre l'API OpenAI. Réessaie plus tard.") from exc
+    # Malgré temperature=0, la longueur de sortie de gpt-4o n'est pas
+    # parfaitement stable d'un appel à l'autre (même fichier, même prompt) :
+    # un second essai suffit en pratique à obtenir une réponse qui tient dans
+    # max_tokens sans qu'un fichier réellement trop long ne s'en sorte pour
+    # autant après 2 tentatives.
+    NB_TENTATIVES_TRONQUE = 2
 
-    choix = reponse.choices[0]
-    # finish_reason == "length" → le JSON est coupé, donc inexploitable :
-    # mieux vaut un message clair qu'une liste d'erreurs silencieusement tronquée.
-    if choix.finish_reason == "length":
+    for tentative in range(1, NB_TENTATIVES_TRONQUE + 1):
+        try:
+            reponse = client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[
+                    {"role": "system", "content": prompt_systeme},
+                    {"role": "user", "content": prompt_utilisateur}
+                ],
+                # 3000 et non 2000 : jusqu'à 8 erreurs décrites, un plafond trop bas
+                # tronque le JSON et fait échouer le scan en 422 (voir finish_reason).
+                max_tokens=3000,
+                # 0 et non 0.2 : à 0.2, le même fichier donnait 5 erreurs à un scan et
+                # 1 au suivant. L'analyse est une tâche d'extraction, la variabilité
+                # n'y apporte rien et rend l'outil peu crédible pour l'étudiant.
+                temperature=0,
+                response_format={"type": "json_schema", "json_schema": SCHEMA_ERREURS}
+            )
+        except RateLimitError as exc:
+            # 429 insufficient_quota : billing/quota OpenAI, pas un bug applicatif —
+            # message explicite plutôt qu'une 500 « Erreur interne » trompeuse.
+            raise ValueError(
+                "Quota OpenAI dépassé. Vérifie ton plan et ta facturation sur "
+                "platform.openai.com."
+            ) from exc
+        except AuthenticationError as exc:
+            raise ValueError("Clé API OpenAI invalide ou manquante.") from exc
+        except APIConnectionError as exc:
+            raise ValueError("Impossible de joindre l'API OpenAI. Réessaie plus tard.") from exc
+
+        choix = reponse.choices[0]
+        if choix.finish_reason != "length":
+            break
+        log.warning(
+            "LLM tronqué (tentative %d/%d) pour %s",
+            tentative, NB_TENTATIVES_TRONQUE, filename,
+        )
+    else:
+        # finish_reason == "length" → le JSON est coupé, donc inexploitable :
+        # mieux vaut un message clair qu'une liste d'erreurs silencieusement tronquée.
         raise ValueError(
             "L'analyse a été tronquée (fichier trop long). "
             "Découpe le fichier ou réessaie sur une partie plus courte."

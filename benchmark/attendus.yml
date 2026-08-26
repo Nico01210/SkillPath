@@ -1,0 +1,148 @@
+# ═══════════════════════════════════════════════════════════
+# SkillPath — corpus de référence
+#
+# Chaque fichier déclare ce que l'analyse DOIT trouver.
+# On ne compare pas les titres exacts : le modèle les reformule
+# à chaque scan. On cherche des mots-clés dans le titre et la
+# description réunis — une erreur est considérée trouvée si
+# TOUS ses mots-clés apparaissent quelque part dans l'erreur.
+#
+# Les mots-clés sont insensibles à la casse et aux accents.
+# ═══════════════════════════════════════════════════════════
+
+fichiers:
+
+  # ── Fichiers avec erreurs plantées volontairement ──────────
+
+  - nom: gestion_stock.py
+    description: Service de gestion de stock — erreurs volontaires
+    attendus:
+      - libelle: Injection SQL par concaténation
+        mots_cles: [injection, sql]
+      - libelle: Exception silencieuse
+        mots_cles: [exception]
+      - libelle: Fichier ouvert sans context manager
+        mots_cles: [fichier, ferm]
+
+  - nom: api_reservation.py
+    description: API de réservation — erreurs volontaires
+    attendus:
+      - libelle: Injection SQL par concaténation
+        mots_cles: [injection, sql]
+      - libelle: CORS permissif
+        mots_cles: [cors]
+      - libelle: Détail d'exception exposé au client
+        mots_cles: [exception]
+      - libelle: Connexion non fermée en cas d'erreur
+        mots_cles: [connexion]
+
+  - nom: panier.js
+    description: Panier d'achat — erreurs volontaires
+    attendus:
+      - libelle: Mutation du tableau pendant l'itération
+        mots_cles: [splice]
+      - libelle: Effets de bord dans calculerTotal
+        mots_cles: [effet, bord]
+      - libelle: sort() mute le tableau source
+        mots_cles: [sort]
+      - libelle: fetch sans vérification
+        mots_cles: [fetch]
+
+  - nom: TableauBord.jsx
+    description: Composant React — erreurs volontaires
+    attendus:
+      - libelle: Mutation directe de l'état React
+        mots_cles: [mutation, etat]
+      - libelle: Dépendance manquante dans useEffect
+        mots_cles: [dependance, useeffect]
+      - libelle: index utilisé comme key de liste
+        mots_cles: [key, index]
+      - libelle: Absence de cleanup sur setInterval
+        mots_cles: [setinterval, nettoy]
+
+  - nom: rapport_ventes.py
+    description: Rapport de ventes — problèmes de performance
+    attendus:
+      - libelle: Connexion non fermée en cas d'exception
+        mots_cles: [connexion, ferm]
+      - libelle: Complexité O(n*m) sur la recherche
+        mots_cles: [complexite]
+      - libelle: Concaténation de chaînes en boucle
+        mots_cles: [concatenation]
+
+  - nom: traitement_donnees.py
+    description: Nettoyage de données — typage et structures
+    attendus:
+      - libelle: Fichier ouvert sans context manager
+        mots_cles: [ressource, liberee]
+      - libelle: Mutable en valeur par défaut
+        mots_cles: [mutable, defaut]
+
+  - nom: synchronisation.js
+    description: Synchronisation serveur — gestion de l'asynchrone
+    attendus:
+      - libelle: await dans une boucle for
+        mots_cles: [await, boucle]
+      - libelle: await dans forEach
+        mots_cles: [await, foreach]
+      - libelle: Exception silencieuse dans le catch
+        mots_cles: [exception, silencieuse]
+      - libelle: fetch sans vérification de reponse.ok
+        mots_cles: [fetch, verification]
+
+  - nom: GalerieProduits.jsx
+    description: Galerie de produits — composants React
+    attendus:
+      - libelle: Mutation directe de l'état panier
+        mots_cles: [mutation, etat]
+      - libelle: Mutation directe de la prop produits
+        mots_cles: [mutation, prop]
+      - libelle: index utilisé comme key de liste
+        mots_cles: [index, cle]
+      - libelle: Rendu conditionnel avec && sur un nombre
+        mots_cles: [conditionnel]
+
+  - nom: bibliotheque.py
+    description: Bibliothèque — programmation orientée objet
+    attendus:
+      - libelle: Attribut de classe mutable partagé
+        mots_cles: [classe, partage]
+      - libelle: Getters et setters sans logique
+        mots_cles: [encapsulation]
+      - libelle: Sous-classe sans appel à super()
+        mots_cles: [heritage]
+
+  - nom: statistiques.js
+    description: Calculs statistiques — méthodes de tableau
+    attendus:
+      - libelle: Mutation du tableau pendant l'itération
+        mots_cles: [mutation, iteration]
+      - libelle: forEach au lieu de map
+        mots_cles: [foreach]
+      - libelle: Comparaison de tableaux avec ===
+        mots_cles: [comparaison]
+
+  # ── Fichiers propres : aucune erreur attendue ──────────────
+
+  - nom: formatage.js
+    description: Utilitaires de formatage — code volontairement propre
+    attendus: []
+
+  - nom: validateur_email.py
+    description: Validation d'email — code volontairement propre
+    attendus: []
+  - nom: conversion_unites.py
+    description: Conversion d'unités — fonctions pures, code volontairement propre
+    attendus: []
+ 
+  - nom: pagination.py
+    description: Calcul de pagination — dataclass immuable, code volontairement propre
+    attendus: []
+ 
+  - nom: validation.js
+    description: Règles de validation de formulaire — code volontairement propre
+    attendus: []
+ 
+  - nom: ListeFiltrable.jsx
+    description: Composant React — hooks corrects, code volontairement propre
+    attendus: []
