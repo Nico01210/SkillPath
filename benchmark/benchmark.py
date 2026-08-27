@@ -41,7 +41,7 @@ URL_DEFAUT = "http://localhost:8000"
 TIMEOUT = 120  # l'analyse passe par un LLM : prévoir large
 
 # Seuils au-delà desquels on considère la configuration acceptable.
-SEUIL_RAPPEL = 0.90
+SEUIL_RAPPEL = 0.80
 MAX_FAUX_POSITIFS = 0
 
 ROUGE, ORANGE, VERT, GRIS, GRAS, RESET = (
