@@ -6,6 +6,7 @@ from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionErr
 import logging
 import json
 import re
+import time
 
 
 log = logging.getLogger(__name__)
@@ -194,34 +195,53 @@ Réponds au format défini par le schéma JSON fourni."""
     # autant après 2 tentatives.
     NB_TENTATIVES_TRONQUE = 2
 
+    # 429 rate_limit_exceeded (débit dépassé par un burst de requêtes, ex. le
+    # banc d'essai qui scanne 16 fichiers à la suite) est transitoire — retenter
+    # après un court délai suffit. insufficient_quota (facturation/plan épuisé)
+    # ne se résorbe jamais tout seul : inutile d'y perdre du temps en retries.
+    NB_TENTATIVES_RATE_LIMIT = 3
+    DELAI_RATE_LIMIT = 5  # secondes, multiplié par le numéro de tentative
+
     for tentative in range(1, NB_TENTATIVES_TRONQUE + 1):
-        try:
-            reponse = client.chat.completions.create(
-                model=settings.openai_model,
-                messages=[
-                    {"role": "system", "content": prompt_systeme},
-                    {"role": "user", "content": prompt_utilisateur}
-                ],
-                # 3000 et non 2000 : jusqu'à 8 erreurs décrites, un plafond trop bas
-                # tronque le JSON et fait échouer le scan en 422 (voir finish_reason).
-                max_tokens=3000,
-                # 0 et non 0.2 : à 0.2, le même fichier donnait 5 erreurs à un scan et
-                # 1 au suivant. L'analyse est une tâche d'extraction, la variabilité
-                # n'y apporte rien et rend l'outil peu crédible pour l'étudiant.
-                temperature=0,
-                response_format={"type": "json_schema", "json_schema": SCHEMA_ERREURS}
-            )
-        except RateLimitError as exc:
-            # 429 insufficient_quota : billing/quota OpenAI, pas un bug applicatif —
-            # message explicite plutôt qu'une 500 « Erreur interne » trompeuse.
-            raise ValueError(
-                "Quota OpenAI dépassé. Vérifie ton plan et ta facturation sur "
-                "platform.openai.com."
-            ) from exc
-        except AuthenticationError as exc:
-            raise ValueError("Clé API OpenAI invalide ou manquante.") from exc
-        except APIConnectionError as exc:
-            raise ValueError("Impossible de joindre l'API OpenAI. Réessaie plus tard.") from exc
+        for tentative_rl in range(1, NB_TENTATIVES_RATE_LIMIT + 1):
+            try:
+                reponse = client.chat.completions.create(
+                    model=settings.openai_model,
+                    messages=[
+                        {"role": "system", "content": prompt_systeme},
+                        {"role": "user", "content": prompt_utilisateur}
+                    ],
+                    # 8192 : 4096 tronquait encore par intermittence (422, voir
+                    # finish_reason) — jusqu'à 6 erreurs à la description verbeuse
+                    # ("pourquoi" + "comment corriger") peuvent dépasser 4096 tokens
+                    # selon la sortie du modèle. gpt-4o autorise jusqu'à 16384 tokens
+                    # de sortie, donc 8192 laisse une marge réelle sans coût
+                    # supplémentaire (la facturation suit les tokens réellement
+                    # générés, pas le plafond).
+                    max_tokens=8192,
+                    # 0 et non 0.2 : à 0.2, le même fichier donnait 5 erreurs à un scan et
+                    # 1 au suivant. L'analyse est une tâche d'extraction, la variabilité
+                    # n'y apporte rien et rend l'outil peu crédible pour l'étudiant.
+                    temperature=0,
+                    response_format={"type": "json_schema", "json_schema": SCHEMA_ERREURS}
+                )
+                break
+            except RateLimitError as exc:
+                if exc.code == "insufficient_quota" or tentative_rl == NB_TENTATIVES_RATE_LIMIT:
+                    raise ValueError(
+                        "Quota OpenAI dépassé. Vérifie ton plan et ta facturation sur "
+                        "platform.openai.com."
+                    ) from exc
+                log.warning(
+                    "LLM rate-limited (tentative %d/%d) pour %s — nouvel essai dans %ds",
+                    tentative_rl, NB_TENTATIVES_RATE_LIMIT, filename,
+                    DELAI_RATE_LIMIT * tentative_rl,
+                )
+                time.sleep(DELAI_RATE_LIMIT * tentative_rl)
+            except AuthenticationError as exc:
+                raise ValueError("Clé API OpenAI invalide ou manquante.") from exc
+            except APIConnectionError as exc:
+                raise ValueError("Impossible de joindre l'API OpenAI. Réessaie plus tard.") from exc
 
         choix = reponse.choices[0]
         if choix.finish_reason != "length":

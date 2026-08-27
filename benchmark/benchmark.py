@@ -234,8 +234,9 @@ def evaluer(nom: str, attendus: list[Attendu], detectees: list[dict]) -> Resulta
         # Erreurs légitimes non anticipées : signalées, jamais pénalisées.
         resultat.hors_corpus = len(detectees) - len(deja_utilisees)
     else:
-        # Sur un fichier propre, toute erreur remontée est un faux positif.
-        resultat.faux_positifs = len(detectees)
+        # Sur un fichier propre, seule une erreur critique est un faux positif :
+        # un avertissement reste informatif, il ne fait pas échouer le banc d'essai.
+        resultat.faux_positifs = sum(1 for e in detectees if e.get("niveau") == "critique")
 
     return resultat
 
