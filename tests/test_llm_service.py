@@ -1,8 +1,9 @@
 """
-Tests unitaires pour llm_service._parse_erreurs()
-Aucune dépendance externe — pas d'appel OpenAI
+Tests unitaires pour llm_service._parse_erreurs() et _openai_analyser()
 """
-from backend.services.llm_service import _parse_erreurs
+from unittest.mock import MagicMock, patch
+
+from backend.services.llm_service import _parse_erreurs, _openai_analyser
 
 
 ERREUR_VALIDE = {
@@ -90,3 +91,55 @@ def test_parse_chaine_vide():
     """Chaîne vide → liste vide sans crash"""
     result = _parse_erreurs("")
     assert result == []
+
+
+def _reponse_openai(finish_reason: str, contenu: str = "[]"):
+    choix = MagicMock(finish_reason=finish_reason)
+    choix.message.content = contenu
+    return MagicMock(choices=[choix])
+
+
+@patch("backend.services.llm_service.sqlite_service")
+@patch("backend.services.llm_service.rag_service")
+@patch("backend.services.llm_service.OpenAI")
+def test_openai_reessaie_apres_troncature(mock_openai_cls, mock_rag, mock_sqlite):
+    """finish_reason == 'length' au 1er essai, correct au 2e → pas d'erreur, pas de 2e appel gaspillé"""
+    mock_sqlite.get_profil.return_value = {"name": "Ada", "role": "backend"}
+    mock_rag.construire_contexte.return_value = ""
+    mock_rag.rattacher_cours.return_value = []
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        _reponse_openai("length", ""),
+        _reponse_openai("stop", "[]"),
+    ]
+    mock_openai_cls.return_value = client
+
+    resultat = _openai_analyser("print('ok')", "exemple.py")
+
+    assert resultat == []
+    assert client.chat.completions.create.call_count == 2
+
+
+@patch("backend.services.llm_service.sqlite_service")
+@patch("backend.services.llm_service.rag_service")
+@patch("backend.services.llm_service.OpenAI")
+def test_openai_echoue_si_toujours_tronque(mock_openai_cls, mock_rag, mock_sqlite):
+    """Deux troncatures de suite → message d'erreur explicite, pas de 3e tentative"""
+    mock_sqlite.get_profil.return_value = {"name": "Ada", "role": "backend"}
+    mock_rag.construire_contexte.return_value = ""
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        _reponse_openai("length", ""),
+        _reponse_openai("length", ""),
+    ]
+    mock_openai_cls.return_value = client
+
+    try:
+        _openai_analyser("print('ok')", "exemple.py")
+        assert False, "devrait lever ValueError"
+    except ValueError as exc:
+        assert "tronqu" in str(exc)
+
+    assert client.chat.completions.create.call_count == 2
