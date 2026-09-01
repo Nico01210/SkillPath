@@ -759,8 +759,13 @@ body {
  
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) et non 1fr : une piste 1fr garde un minimum implicite
+     min-content, donc la carte au contenu le plus large (badges en nowrap)
+     élargit sa colonne au détriment de l'autre. Le minimum à 0 force les
+     deux colonnes à faire exactement la même largeur. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+  align-items: stretch;   /* les deux cartes prennent la hauteur de la plus haute */
 }
  
 .rank-card {
@@ -768,6 +773,9 @@ body {
   border: 0.5px solid var(--border);
   border-radius: var(--radius-md);
   padding: 20px;
+  min-width: 0;           /* la carte ne déborde jamais de sa colonne */
+  display: flex;
+  flex-direction: column;
 }
  
 .rank-card-title { font-size: 15px; font-weight: 500; color: var(--text-primary); margin-bottom: 16px; }
@@ -814,6 +822,7 @@ body {
   border-radius: var(--radius-pill);
   white-space: nowrap;
   font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;         /* c'est le titre qui se tronque, pas le badge */
 }
  
 .rank-badge-erreur        { background: rgba(239, 159, 39, 0.15); color: var(--orange); }
