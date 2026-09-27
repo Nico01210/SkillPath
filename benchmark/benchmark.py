@@ -286,6 +286,12 @@ def afficher_synthese(resultats: list[Resultat]) -> bool:
     print(f"  {GRAS}Faux positifs{RESET}  {couleur_fp}{faux_positifs:>5}{RESET}   {GRIS}sur {fichiers_propres} fichier(s) volontairement propre(s){RESET}")
     print()
 
+    en_erreur = sum(1 for r in resultats if r.erreur)
+    if en_erreur:
+        print(f"  {ROUGE}{GRAS}Banc d'essai incomplet{RESET} {GRIS}— {en_erreur} fichier(s) non analysé(s){RESET}")
+        print()
+        return False
+
     conforme = rappel >= SEUIL_RAPPEL and faux_positifs <= MAX_FAUX_POSITIFS
     if conforme:
         print(f"  {VERT}{GRAS}Configuration conforme{RESET} {GRIS}— rappel ≥ {SEUIL_RAPPEL:.0%}, aucun faux positif{RESET}")
@@ -298,6 +304,11 @@ def afficher_synthese(resultats: list[Resultat]) -> bool:
 # ── Point d'entrée ────────────────────────────────────────────
 
 def main() -> int:
+    # Sous Windows, la console peut être en cp1252 : ✓, ✗ et ≥ y feraient planter print().
+    for flux in (sys.stdout, sys.stderr):
+        if hasattr(flux, "reconfigure"):
+            flux.reconfigure(encoding="utf-8", errors="replace")
+
     parseur = argparse.ArgumentParser(description="Banc d'essai SkillPath")
     parseur.add_argument("--url", default=URL_DEFAUT, help="URL de l'instance SkillPath")
     parseur.add_argument("--fichier", help="N'évaluer qu'un seul fichier du corpus")
