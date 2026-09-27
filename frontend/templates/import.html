@@ -132,11 +132,13 @@
     try {
       const res = await fetch('/import/liste');
       const data = await res.json();
-      renderListe(data.cours);
+      renderListe(data.cours, data.chunks || {});
     } catch { /* silencieux si backend down */ }
   }
 
-  function renderListe(fichiers) {
+  // chunksParFichier vient du serveur (ChromaDB) : metaStore n'est rempli que
+  // par un import fait depuis ce navigateur, il ne connaît pas les autres cours.
+  function renderListe(fichiers, chunksParFichier) {
     const container = document.getElementById('importList');
 
     if (!fichiers.length) {
@@ -153,14 +155,14 @@
       return;
     }
 
-    const totalChunks = fichiers.reduce((acc, f) => acc + (metaStore[f]?.chunks || 0), 0);
+    const totalChunks = fichiers.reduce((acc, f) => acc + (chunksParFichier[f] || 0), 0);
     document.getElementById('importStats').textContent = `${fichiers.length} cours · ${totalChunks} chunks indexés`;
 
     container.innerHTML = fichiers.map(nom => {
       const meta   = metaStore[nom] || {};
       const pages  = meta.pages  ? `${meta.pages} pages · ` : '';
       const date   = meta.date   ? `importé le ${meta.date}` : '';
-      const chunks = meta.chunks ?? '—';
+      const chunks = chunksParFichier[nom] ?? '—';
       // Nom passé par data-* et non par onclick="...('${nom}')" : une apostrophe
       // dans le nom du fichier (fréquent en français, « cours d'algo.pdf »)
       // fermait la chaîne JS et cassait le bouton Supprimer.

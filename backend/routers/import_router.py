@@ -94,9 +94,14 @@ async def lister_cours():
         if f.lower().endswith(".pdf")
     ]
 
+    # Nombre de chunks lu dans ChromaDB : un PDF présent dans uploads/ mais pas
+    # (ou plus) indexé apparaît avec 0.
+    par_source = chroma_service.compter_chunks_par_source()
+
     return {
         "total": len(fichiers),
-        "cours": sorted(fichiers)
+        "cours": sorted(fichiers),
+        "chunks": {f: par_source.get(f, 0) for f in fichiers}
     }
  
  

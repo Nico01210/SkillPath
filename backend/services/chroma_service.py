@@ -131,6 +131,20 @@ def compter_chunks() -> int:
     return get_collection().count()
 
 
+def compter_chunks_par_source() -> dict[str, int]:
+    """
+    Retourne {nom_du_pdf: nombre_de_chunks} pour tous les cours indexés.
+    Sert à afficher le nombre de chunks dans la liste des cours : c'est l'index
+    qui fait foi, pas le localStorage du navigateur qui a fait l'import.
+    """
+    res = get_collection().get(include=["metadatas"])
+    compte: dict[str, int] = {}
+    for meta in res["metadatas"]:
+        source = meta["source"]
+        compte[source] = compte.get(source, 0) + 1
+    return compte
+
+
 def get_chunk(chunk_id: str) -> dict | None:
     """
     Récupère un chunk par son identifiant (celui produit par chunk_id()).
